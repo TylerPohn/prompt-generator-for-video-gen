@@ -66,9 +66,108 @@ async function getPrediction(predictionId) {
   return JSON.parse(stdout);
 }
 
+async function recommendSelections(product) {
+  const systemPrompt = `You are an expert ad strategist. Given a product name, recommend the best ad parameters. CRITICAL: Respond ONLY with valid JSON, no other text. Do NOT use quotation marks within field values.`;
+
+  const userMessage = `Product: ${product}. Pick one value from each list below and respond with ONLY a JSON object in this exact format: {"hook_type":"value","pain_point":"value","tone":"value","visual_style":"value","character_type":"value","character_vibe":"value","group_context":"value","problem_context":"value","emotion_first_3_seconds":"value","platform":"value","transition_type":"value"}. Options: hook_type (relatable_pain_point, bold_claim, pattern_interrupt, did_you_know_fact, humor_skit, emotional_cold_open, mystery_setup, challenge_or_question, visual_surprise, story_minidrama), pain_point (stress_or_overwhelm, lack_of_time, boring_repetitive_days, low_energy_or_fatigue, feeling_behind_or_inadequate, complicated_current_solutions, need_for_mental_escape, needing_focus_or_clarity, wanting_authenticity_or_tradition, decision_fatigue, wanting_to_feel_attractive), tone (calm, serious, lighthearted, humorous, dramatic, gritty, aspirational, friendly, moody, energetic, seductive, sensual), visual_style (cinematic, ugc_handheld, animated, text_only, voiceover_over_visuals, pov_style, slow_motion, grainy_documentary, clean_minimalist, fast_cut_social, glamorous), character_type (everyday_consumer, working_professional, parent, student, athlete, creator_or_influencer, no_character, blue_collar_worker, outdoors_person), character_vibe (calm, chaotic, sarcastic, confident, tired, nostalgic, quirky, serious, adventurous, relatable, sexy, sultry, seductive), group_context (friend_group, family, couple, coworkers, roommates, siblings), problem_context (morning_rush, long_workday, stuck_in_traffic, never_ending_meetings, scrolling_endlessly, messy_household_chaos, late_night_exhaustion, outdoors_moment_of_quiet, garage_or_workshop_break, after_work_unwind), emotion_first_3_seconds (surprise, curiosity, relief, excitement, empathy, urgency, calm, humor, nostalgia, intrigue), platform (tiktok, instagram_reels, youtube, linkedin, facebook, x_twitter, website_hero, snapchat, youtube_shorts, generic_social), transition_type (hard_cut, soft_fade, match_cut, zoom_into_product, text_overlay_transition, actor_points_to_product, comedic_punchline_cut, dramatic_pause_then_cut, quick_flash, pan_to_black). Respond with JSON only.`;
+
+  // Use proper JSON.stringify instead of manual escaping
+  const payload = JSON.stringify({
+    input: {
+      prompt: userMessage,
+      system_prompt: systemPrompt,
+      max_tokens: 500
+    }
+  });
+
+  const tmpFile = `/tmp/replicate-${Date.now()}.json`;
+  const { writeFileSync, unlinkSync } = await import('fs');
+  writeFileSync(tmpFile, payload);
+
+  const cmd = `curl -s -X POST "https://api.replicate.com/v1/models/meta/meta-llama-3.1-405b-instruct/predictions" \
+    -H "Authorization: Bearer ${REPLICATE_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d @${tmpFile}`;
+
+  console.log('\n✨ Generating selection recommendations with LLM...');
+
+  const { stdout, stderr } = await execAsync(cmd);
+
+  // Clean up temp file
+  try { unlinkSync(tmpFile); } catch (e) {}
+
+  console.log('API Response:', stdout);
+  if (stderr) console.log('API Error:', stderr);
+
+  const prediction = JSON.parse(stdout);
+
+  console.log('LLM Prediction ID:', prediction.id);
+
+  if (!prediction.id) {
+    console.error('Failed to create prediction:', prediction);
+    throw new Error(`Failed to create prediction: ${JSON.stringify(prediction)}`);
+  }
+
+  // Poll for completion
+  let result = prediction;
+  let attempts = 0;
+  const maxAttempts = 60;
+
+  while (!['succeeded', 'failed'].includes(result.status) && attempts < maxAttempts) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const pollCmd = `curl -s -H "Authorization: Bearer ${REPLICATE_API_KEY}" \
+      "https://api.replicate.com/v1/predictions/${prediction.id}"`;
+    const { stdout: pollOutput } = await execAsync(pollCmd);
+    result = JSON.parse(pollOutput);
+    attempts++;
+    console.log('LLM Status:', result.status);
+  }
+
+  if (result.status === 'succeeded') {
+    const generatedText = Array.isArray(result.output) ? result.output.join('') : result.output;
+    console.log('Generated recommendations:', generatedText);
+
+    // Extract JSON from response (in case LLM adds extra text)
+    const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    return JSON.parse(generatedText);
+  } else {
+    throw new Error('Failed to generate recommendations with LLM');
+  }
+}
+
+function sanitizePrompt(prompt) {
+  // Remove potentially flagged content while maintaining the mood
+  const flaggedPhrases = [
+    /bodies? entwined/gi,
+    /bodies? intertwined/gi,
+    /intimate touch/gi,
+    /caress/gi,
+    /sensual touch/gi,
+    /naked/gi,
+    /undressed/gi,
+    /seductive gaze/gi,
+    /seductive stare/gi,
+  ];
+
+  let sanitized = prompt;
+
+  // Replace flagged phrases with safer alternatives
+  flaggedPhrases.forEach(phrase => {
+    sanitized = sanitized.replace(phrase, 'close together');
+  });
+
+  // Remove overly explicit descriptions
+  sanitized = sanitized.replace(/their (bodies|forms)[^,.]*(entwined|intertwined|pressed|touching)[^,.]*,?/gi, 'together,');
+
+  return sanitized;
+}
+
 async function generatePromptWithLLM(selections) {
   const productContext = selections.product ? ` for ${selections.product}` : '';
-  const systemPrompt = `You are a creative video prompt writer. Based on the user's selections for a video ad${productContext}, generate a detailed, vivid video prompt that would work well for video generation AI models. Keep it concise (2-4 sentences) but descriptive. The video must be exactly ${selections.ad_length} seconds long. IMPORTANT: The product asset/hero shot will be added separately after the video, so focus on setting the mood and context, NOT showing the product itself. CRITICAL: Do NOT use quotation marks (single or double quotes) anywhere in your response as it will break JSON parsing.`;
+  const systemPrompt = `You are a creative video prompt writer. Based on the user's selections for a video ad${productContext}, generate a detailed, vivid video prompt that would work well for video generation AI models. Keep it concise (2-4 sentences) but descriptive. The video must be exactly ${selections.ad_length} seconds long. IMPORTANT: The product asset/hero shot will be added separately after the video, so focus on setting the mood and context, NOT showing the product itself. CRITICAL: Do NOT use quotation marks (single or double quotes) anywhere in your response as it will break JSON parsing. CONTENT POLICY: Avoid explicit descriptions of bodies, physical intimacy, or suggestive content. Focus on lighting, atmosphere, setting, and emotion instead. Use elegant and sophisticated language.`;
 
   const productLine = selections.product ? `- Product: ${selections.product}` : '';
 
@@ -81,6 +180,7 @@ async function generatePromptWithLLM(selections) {
     visual_style: 'Visual Style',
     character_type: 'Character Type',
     character_vibe: 'Character Vibe',
+    group_context: 'Group Context',
     problem_context: 'Problem Context',
     emotion_first_3_seconds: 'First 3 Seconds Emotion',
     platform: 'Platform',
@@ -141,8 +241,13 @@ Generate a detailed video prompt that incorporates these elements naturally. Rem
   if (result.status === 'succeeded') {
     // Extract text from output (llama returns array of strings)
     const generatedText = Array.isArray(result.output) ? result.output.join('') : result.output;
-    console.log('Generated prompt:', generatedText);
-    return generatedText;
+    console.log('Generated prompt (raw):', generatedText);
+
+    // Sanitize the prompt to avoid content moderation issues
+    const sanitizedPrompt = sanitizePrompt(generatedText);
+    console.log('Generated prompt (sanitized):', sanitizedPrompt);
+
+    return sanitizedPrompt;
   } else {
     throw new Error('Failed to generate prompt with LLM');
   }
@@ -213,6 +318,24 @@ const server = http.createServer(async (req, res) => {
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ prompt: generatedPrompt }));
+      return;
+    }
+
+    // POST /api/recommend-selections - Get AI recommendations for selections
+    if (req.method === 'POST' && url.pathname === '/api/recommend-selections') {
+      console.log('\n✨ Incoming selection recommendation request');
+
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      await new Promise(resolve => req.on('end', resolve));
+
+      const { product } = JSON.parse(body);
+      console.log('Product:', product);
+
+      const recommendations = await recommendSelections(product);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ selections: recommendations }));
       return;
     }
 

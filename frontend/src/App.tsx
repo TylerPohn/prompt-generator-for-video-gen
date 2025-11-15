@@ -12,7 +12,7 @@ import { useVideoCards, useFilters } from './hooks';
 function App() {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const [currentDuration, setCurrentDuration] = useState(4); // Default 4 seconds
-  const { cards, toggleFavorite, addLabel, removeLabel, updateCard, deleteCard } = useVideoCards();
+  const { cards, toggleFavorite, addLabel, removeLabel, updateCard, deleteCard, addCard } = useVideoCards();
 
   // Initialize filters
   const {
@@ -52,6 +52,8 @@ function App() {
             prompt={currentPrompt}
             onPromptChange={setCurrentPrompt}
             duration={currentDuration}
+            onCardCreate={addCard}
+            onCardUpdate={updateCard}
           />
         </div>
 

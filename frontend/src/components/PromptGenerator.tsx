@@ -14,6 +14,7 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
     visual_style: undefined,
     character_type: undefined,
     character_vibe: undefined,
+    group_context: undefined,
     problem_context: undefined,
     emotion_first_3_seconds: undefined,
     platform: undefined,
@@ -24,9 +25,41 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isGettingRecommendations, setIsGettingRecommendations] = useState(false);
 
   const updateSelection = (key: keyof PromptSelections, value: string | number) => {
     setSelections(prev => ({ ...prev, [key]: value }));
+  };
+
+  const getRecommendations = async () => {
+    if (!selections.product?.trim()) {
+      alert('Please enter a product name first');
+      return;
+    }
+
+    setIsGettingRecommendations(true);
+    try {
+      const response = await fetch('http://localhost:3001/api/recommend-selections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: selections.product }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get recommendations');
+      }
+
+      const data = await response.json();
+      setSelections(prev => ({
+        ...prev,
+        ...data.selections,
+      }));
+    } catch (error) {
+      console.error('Error getting recommendations:', error);
+      alert('Failed to get recommendations. Please try again.');
+    } finally {
+      setIsGettingRecommendations(false);
+    }
   };
 
   const generatePrompt = async () => {
@@ -85,22 +118,48 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
         <div className="space-y-4 mb-6">
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Product Name
+              Product
             </label>
-            <input
-              type="text"
-              value={selections.product}
-              onChange={(e) => {
-                const value = e.target.value.slice(0, 20); // Max 20 chars
-                updateSelection('product', value);
-              }}
-              placeholder="e.g., Energy Drink, Wireless Earbuds"
-              maxLength={20}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              {selections.product.length}/20 characters
-            </p>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={selections.product}
+                  onChange={(e) => {
+                    const value = e.target.value.slice(0, 20); // Max 20 chars
+                    updateSelection('product', value);
+                  }}
+                  placeholder="e.g., Energy Drink, Wireless Earbuds"
+                  maxLength={20}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {selections.product.length}/20 characters
+                </p>
+              </div>
+              <button
+                onClick={getRecommendations}
+                disabled={isGettingRecommendations || !selections.product?.trim()}
+                title="Get AI recommendations"
+                className="px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors self-start"
+              >
+                {isGettingRecommendations ? (
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
+                    <circle cx="12" cy="12" r="1" fill="currentColor" />
+                    <circle cx="8" cy="8" r="1" fill="currentColor" />
+                    <circle cx="16" cy="16" r="1" fill="currentColor" />
+                    <circle cx="8" cy="16" r="1" fill="currentColor" />
+                    <circle cx="16" cy="8" r="1" fill="currentColor" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             {(Object.keys(selections) as Array<keyof PromptSelections>)

@@ -5,6 +5,7 @@ export interface PromptGeneratorOptions {
   visual_style: string[];
   character_type: string[];
   character_vibe: string[];
+  group_context: string[];
   problem_context: string[];
   emotion_first_3_seconds: string[];
   platform: string[];
@@ -35,7 +36,8 @@ export const PROMPT_OPTIONS: PromptGeneratorOptions = {
     "need_for_mental_escape",
     "needing_focus_or_clarity",
     "wanting_authenticity_or_tradition",
-    "decision_fatigue"
+    "decision_fatigue",
+    "wanting_to_feel_attractive"
   ],
   tone: [
     "calm",
@@ -47,7 +49,9 @@ export const PROMPT_OPTIONS: PromptGeneratorOptions = {
     "aspirational",
     "friendly",
     "moody",
-    "energetic"
+    "energetic",
+    "seductive",
+    "sensual"
   ],
   visual_style: [
     "cinematic",
@@ -59,7 +63,8 @@ export const PROMPT_OPTIONS: PromptGeneratorOptions = {
     "slow_motion",
     "grainy_documentary",
     "clean_minimalist",
-    "fast_cut_social"
+    "fast_cut_social",
+    "glamorous"
   ],
   character_type: [
     "everyday_consumer",
@@ -70,8 +75,7 @@ export const PROMPT_OPTIONS: PromptGeneratorOptions = {
     "creator_or_influencer",
     "no_character",
     "blue_collar_worker",
-    "outdoors_person",
-    "friend_group"
+    "outdoors_person"
   ],
   character_vibe: [
     "calm",
@@ -83,7 +87,18 @@ export const PROMPT_OPTIONS: PromptGeneratorOptions = {
     "quirky",
     "serious",
     "adventurous",
-    "relatable"
+    "relatable",
+    "sexy",
+    "sultry",
+    "seductive"
+  ],
+  group_context: [
+    "friend_group",
+    "family",
+    "couple",
+    "coworkers",
+    "roommates",
+    "siblings"
   ],
   problem_context: [
     "morning_rush",
@@ -144,6 +159,7 @@ export interface PromptSelections {
   visual_style?: string;
   character_type?: string;
   character_vibe?: string;
+  group_context?: string;
   problem_context?: string;
   emotion_first_3_seconds?: string;
   platform?: string;

@@ -1,6 +1,6 @@
 import { type FormEvent } from 'react';
 import { AVAILABLE_MODELS } from '../types';
-import { useVideoCards } from '../hooks/useVideoCards';
+import type { VideoCard } from '../types';
 import { useVideoGeneration } from '../hooks/useVideoGeneration';
 import { useLastModel } from '../hooks/useLastModel';
 
@@ -8,11 +8,12 @@ interface PromptInputPanelProps {
   prompt: string;
   onPromptChange: (prompt: string) => void;
   duration: number;
+  onCardCreate: (card: VideoCard) => void;
+  onCardUpdate: (id: string, updates: Partial<VideoCard>) => void;
 }
 
-export function PromptInputPanel({ prompt, onPromptChange, duration }: PromptInputPanelProps) {
+export function PromptInputPanel({ prompt, onPromptChange, duration, onCardCreate, onCardUpdate }: PromptInputPanelProps) {
   const { lastModel, setLastModel } = useLastModel();
-  const { addCard, updateCard } = useVideoCards();
   const { generate, isGenerating } = useVideoGeneration();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -25,8 +26,8 @@ export function PromptInputPanel({ prompt, onPromptChange, duration }: PromptInp
       prompt: prompt.trim(),
       model: lastModel,
       duration,
-      onCardCreate: addCard,
-      onCardUpdate: updateCard,
+      onCardCreate,
+      onCardUpdate,
     });
 
     // Optionally clear prompt after submission

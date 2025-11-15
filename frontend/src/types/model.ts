@@ -17,6 +17,11 @@ export const AVAILABLE_MODELS: ReplicateModel[] = [
     description: "ByteDance's fast video generation model"
   },
   {
+    id: "bytedance/seedance-1-lite",
+    name: "Seedance 1 Lite",
+    description: "ByteDance's lightweight video generation model"
+  },
+  {
     id: "openai/sora-2",
     name: "OpenAI Sora 2",
     description: "OpenAI's advanced video generation model"
