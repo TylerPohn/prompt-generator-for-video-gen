@@ -40,15 +40,25 @@ export async function generateThumbnail(
         // Convert canvas to data URL
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
 
-        // Clean up
+        // Clean up - fully remove elements from memory
         video.src = '';
+        video.remove();
+        canvas.remove();
         resolve(dataUrl);
       } catch (error) {
+        // Clean up on error too
+        video.src = '';
+        video.remove();
+        canvas.remove();
         reject(error);
       }
     });
 
     video.addEventListener('error', () => {
+      // Clean up on error
+      video.src = '';
+      video.remove();
+      canvas.remove();
       reject(new Error('Failed to load video for thumbnail'));
     });
 

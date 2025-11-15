@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { VideoCard as VideoCardType } from '../types';
 import { StatusBadge } from './StatusBadge';
 import { VideoPlayer } from './VideoPlayer';
@@ -9,8 +9,8 @@ import { AddLabelModal } from './AddLabelModal';
 import { ErrorDisplay } from './ErrorDisplay';
 import { DeleteButton } from './DeleteButton';
 import { useLabelColors } from '../hooks';
-import { useThumbnailGeneration } from '../hooks/useThumbnailGeneration';
 import { useVideoGeneration } from '../hooks';
+import { generateAndStoreThumbnail } from '../utils/thumbnail';
 
 interface VideoCardProps {
   card: VideoCardType;
@@ -37,16 +37,20 @@ export function VideoCard({
   const { retry, generatingIds } = useVideoGeneration();
   const promptPreviewLength = 150;
   const needsTruncation = card.prompt.length > promptPreviewLength;
+  const thumbnailGeneratedRef = useRef(false);
 
   const isRetrying = generatingIds.includes(card.id);
   const canRetry = (card.retryCount || 0) < 3;
 
-  // Generate thumbnail when video completes
-  useThumbnailGeneration({
-    videoUrl: card.videoUrl,
-    cardId: card.id,
-    onThumbnailGenerated,
-  });
+  // Generate thumbnail ONLY when video becomes visible (lazy loading)
+  const handleVideoVisible = () => {
+    if (card.videoUrl && !card.thumbnailUrl && !thumbnailGeneratedRef.current) {
+      thumbnailGeneratedRef.current = true;
+      generateAndStoreThumbnail(card.videoUrl, (thumbnailUrl) => {
+        onThumbnailGenerated(card.id, thumbnailUrl);
+      });
+    }
+  };
 
   const displayPrompt = isPromptExpanded
     ? card.prompt
@@ -57,7 +61,7 @@ export function VideoCard({
       {/* Video/Placeholder */}
       <div className="p-4 pb-3">
         {card.status === 'complete' && card.videoUrl ? (
-          <VideoPlayer videoUrl={card.videoUrl} />
+          <VideoPlayer videoUrl={card.videoUrl} onVisible={handleVideoVisible} />
         ) : (
           <VideoPlaceholder status={card.status} thumbnailUrl={card.thumbnailUrl} />
         )}

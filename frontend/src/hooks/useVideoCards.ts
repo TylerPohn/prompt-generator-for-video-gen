@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { VideoCard } from '../types';
 import { StorageKeys, getFromStorage, setToStorage } from '../utils/localStorage';
 
@@ -7,10 +7,46 @@ export function useVideoCards() {
     getFromStorage<VideoCard[]>(StorageKeys.VIDEO_CARDS, [])
   );
 
-  // Save to localStorage whenever cards change
+  // Debounce localStorage writes to avoid performance issues
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const cardsRef = useRef(cards);
+
+  // Keep ref updated
   useEffect(() => {
-    setToStorage(StorageKeys.VIDEO_CARDS, cards);
+    cardsRef.current = cards;
   }, [cards]);
+
+  // Debounced save
+  useEffect(() => {
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Schedule save after 500ms of inactivity
+    saveTimeoutRef.current = setTimeout(() => {
+      setToStorage(StorageKeys.VIDEO_CARDS, cards);
+    }, 500);
+
+    // Cleanup
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [cards]);
+
+  // Save immediately on page unload to prevent data loss
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      setToStorage(StorageKeys.VIDEO_CARDS, cardsRef.current);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   const addCard = useCallback((card: VideoCard) => {
     setCards(prev => [card, ...prev]); // newest first

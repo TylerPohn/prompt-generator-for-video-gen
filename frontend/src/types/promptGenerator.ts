@@ -5,6 +5,7 @@ export interface PromptGeneratorOptions {
   visual_style: string[];
   character_type: string[];
   character_vibe: string[];
+  character_perception: string[];
   group_context: string[];
   problem_context: string[];
   emotion_first_3_seconds: string[];
@@ -92,6 +93,22 @@ export const PROMPT_OPTIONS: PromptGeneratorOptions = {
     "sultry",
     "seductive"
   ],
+  character_perception: [
+    "envied",
+    "wanted",
+    "desired",
+    "admired",
+    "respected",
+    "feared",
+    "trusted",
+    "loved",
+    "misunderstood",
+    "overlooked",
+    "celebrated",
+    "pitied",
+    "revered",
+    "aspirational"
+  ],
   group_context: [
     "friend_group",
     "family",
@@ -159,6 +176,7 @@ export interface PromptSelections {
   visual_style?: string;
   character_type?: string;
   character_vibe?: string;
+  character_perception?: string;
   group_context?: string;
   problem_context?: string;
   emotion_first_3_seconds?: string;

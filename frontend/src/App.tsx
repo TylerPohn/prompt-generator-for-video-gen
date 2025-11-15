@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   PromptInputPanel,
   CardGrid,
@@ -25,9 +25,10 @@ function App() {
     hasActiveFilters,
   } = useFilters(cards);
 
-  const handleThumbnailGenerated = (id: string, thumbnailUrl: string) => {
+  // Memoize to prevent unnecessary effect re-runs in child components
+  const handleThumbnailGenerated = useCallback((id: string, thumbnailUrl: string) => {
     updateCard(id, { thumbnailUrl });
-  };
+  }, [updateCard]);
 
   return (
     <div className="min-h-screen bg-gray-50">

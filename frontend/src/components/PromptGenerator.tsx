@@ -14,6 +14,7 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
     visual_style: undefined,
     character_type: undefined,
     character_vibe: undefined,
+    character_perception: undefined,
     group_context: undefined,
     problem_context: undefined,
     emotion_first_3_seconds: undefined,

@@ -69,7 +69,7 @@ async function getPrediction(predictionId) {
 async function recommendSelections(product) {
   const systemPrompt = `You are an expert ad strategist. Given a product name, recommend the best ad parameters. CRITICAL: Respond ONLY with valid JSON, no other text. Do NOT use quotation marks within field values.`;
 
-  const userMessage = `Product: ${product}. Pick one value from each list below and respond with ONLY a JSON object in this exact format: {"hook_type":"value","pain_point":"value","tone":"value","visual_style":"value","character_type":"value","character_vibe":"value","group_context":"value","problem_context":"value","emotion_first_3_seconds":"value","platform":"value","transition_type":"value"}. Options: hook_type (relatable_pain_point, bold_claim, pattern_interrupt, did_you_know_fact, humor_skit, emotional_cold_open, mystery_setup, challenge_or_question, visual_surprise, story_minidrama), pain_point (stress_or_overwhelm, lack_of_time, boring_repetitive_days, low_energy_or_fatigue, feeling_behind_or_inadequate, complicated_current_solutions, need_for_mental_escape, needing_focus_or_clarity, wanting_authenticity_or_tradition, decision_fatigue, wanting_to_feel_attractive), tone (calm, serious, lighthearted, humorous, dramatic, gritty, aspirational, friendly, moody, energetic, seductive, sensual), visual_style (cinematic, ugc_handheld, animated, text_only, voiceover_over_visuals, pov_style, slow_motion, grainy_documentary, clean_minimalist, fast_cut_social, glamorous), character_type (everyday_consumer, working_professional, parent, student, athlete, creator_or_influencer, no_character, blue_collar_worker, outdoors_person), character_vibe (calm, chaotic, sarcastic, confident, tired, nostalgic, quirky, serious, adventurous, relatable, sexy, sultry, seductive), group_context (friend_group, family, couple, coworkers, roommates, siblings), problem_context (morning_rush, long_workday, stuck_in_traffic, never_ending_meetings, scrolling_endlessly, messy_household_chaos, late_night_exhaustion, outdoors_moment_of_quiet, garage_or_workshop_break, after_work_unwind), emotion_first_3_seconds (surprise, curiosity, relief, excitement, empathy, urgency, calm, humor, nostalgia, intrigue), platform (tiktok, instagram_reels, youtube, linkedin, facebook, x_twitter, website_hero, snapchat, youtube_shorts, generic_social), transition_type (hard_cut, soft_fade, match_cut, zoom_into_product, text_overlay_transition, actor_points_to_product, comedic_punchline_cut, dramatic_pause_then_cut, quick_flash, pan_to_black). Respond with JSON only.`;
+  const userMessage = `Product: ${product}. Pick one value from each list below and respond with ONLY a JSON object in this exact format: {"hook_type":"value","pain_point":"value","tone":"value","visual_style":"value","character_type":"value","character_vibe":"value","character_perception":"value","group_context":"value","problem_context":"value","emotion_first_3_seconds":"value","platform":"value","transition_type":"value"}. Options: hook_type (relatable_pain_point, bold_claim, pattern_interrupt, did_you_know_fact, humor_skit, emotional_cold_open, mystery_setup, challenge_or_question, visual_surprise, story_minidrama), pain_point (stress_or_overwhelm, lack_of_time, boring_repetitive_days, low_energy_or_fatigue, feeling_behind_or_inadequate, complicated_current_solutions, need_for_mental_escape, needing_focus_or_clarity, wanting_authenticity_or_tradition, decision_fatigue, wanting_to_feel_attractive), tone (calm, serious, lighthearted, humorous, dramatic, gritty, aspirational, friendly, moody, energetic, seductive, sensual), visual_style (cinematic, ugc_handheld, animated, text_only, voiceover_over_visuals, pov_style, slow_motion, grainy_documentary, clean_minimalist, fast_cut_social, glamorous), character_type (everyday_consumer, working_professional, parent, student, athlete, creator_or_influencer, no_character, blue_collar_worker, outdoors_person), character_vibe (calm, chaotic, sarcastic, confident, tired, nostalgic, quirky, serious, adventurous, relatable, sexy, sultry, seductive), character_perception (envied, wanted, desired, admired, respected, feared, trusted, loved, misunderstood, overlooked, celebrated, pitied, revered, aspirational), group_context (friend_group, family, couple, coworkers, roommates, siblings), problem_context (morning_rush, long_workday, stuck_in_traffic, never_ending_meetings, scrolling_endlessly, messy_household_chaos, late_night_exhaustion, outdoors_moment_of_quiet, garage_or_workshop_break, after_work_unwind), emotion_first_3_seconds (surprise, curiosity, relief, excitement, empathy, urgency, calm, humor, nostalgia, intrigue), platform (tiktok, instagram_reels, youtube, linkedin, facebook, x_twitter, website_hero, snapchat, youtube_shorts, generic_social), transition_type (hard_cut, soft_fade, match_cut, zoom_into_product, text_overlay_transition, actor_points_to_product, comedic_punchline_cut, dramatic_pause_then_cut, quick_flash, pan_to_black). Respond with JSON only.`;
 
   // Use proper JSON.stringify instead of manual escaping
   const payload = JSON.stringify({
@@ -180,6 +180,7 @@ async function generatePromptWithLLM(selections) {
     visual_style: 'Visual Style',
     character_type: 'Character Type',
     character_vibe: 'Character Vibe',
+    character_perception: 'Character Perception',
     group_context: 'Group Context',
     problem_context: 'Problem Context',
     emotion_first_3_seconds: 'First 3 Seconds Emotion',
@@ -254,12 +255,17 @@ Generate a detailed video prompt that incorporates these elements naturally. Rem
 }
 
 const server = http.createServer(async (req, res) => {
+  const requestId = Date.now().toString(36);
+  console.log(`\n🔵 [${requestId}] ${req.method} ${req.url}`);
+  console.log(`🔵 [${requestId}] Headers:`, req.headers);
+
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
+    console.log(`🔵 [${requestId}] OPTIONS request - responding with 200`);
     res.writeHead(200);
     res.end();
     return;
@@ -271,12 +277,12 @@ const server = http.createServer(async (req, res) => {
   try {
     // POST /api/predictions/{owner}/{model} - Create prediction
     if (req.method === 'POST' && url.pathname.startsWith('/api/predictions/')) {
-      console.log('\n📥 Incoming POST request:');
-      console.log('Full path:', url.pathname);
+      console.log(`\n📥 [${requestId}] Create Prediction Request`);
+      console.log(`📥 [${requestId}] Full path:`, url.pathname);
 
       // /api/predictions/google/veo-3.1 -> google/veo-3.1
       const model = url.pathname.replace('/api/predictions/', '');
-      console.log('Extracted model:', model);
+      console.log(`📥 [${requestId}] Extracted model:`, model);
 
       let body = '';
       req.on('data', chunk => { body += chunk; });
@@ -284,9 +290,13 @@ const server = http.createServer(async (req, res) => {
       await new Promise(resolve => req.on('end', resolve));
 
       const data = JSON.parse(body);
-      console.log('Request body:', data);
+      console.log(`📥 [${requestId}] Request body:`, JSON.stringify(data, null, 2));
 
+      console.log(`📥 [${requestId}] Calling createPrediction...`);
       const result = await createPrediction(model, data.input.prompt, data.input.duration);
+
+      console.log(`✅ [${requestId}] Prediction created:`, result.id);
+      console.log(`✅ [${requestId}] Response:`, JSON.stringify(result, null, 2));
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
@@ -296,7 +306,16 @@ const server = http.createServer(async (req, res) => {
     // GET /api/predictions/:id - Get prediction status
     if (req.method === 'GET' && url.pathname.startsWith('/api/predictions/')) {
       const predictionId = url.pathname.split('/').pop();
+      console.log(`🔍 [${requestId}] Get Prediction Status:`, predictionId);
+
       const result = await getPrediction(predictionId);
+
+      console.log(`🔍 [${requestId}] Prediction status:`, result.status);
+      if (result.status === 'succeeded') {
+        console.log(`✅ [${requestId}] Prediction succeeded! Output:`, result.output);
+      } else if (result.status === 'failed') {
+        console.log(`❌ [${requestId}] Prediction failed:`, result.error);
+      }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
@@ -305,16 +324,20 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/generate-prompt - Generate prompt using LLM
     if (req.method === 'POST' && url.pathname === '/api/generate-prompt') {
-      console.log('\n📝 Incoming prompt generation request');
+      console.log(`\n📝 [${requestId}] Generate Prompt Request`);
 
       let body = '';
       req.on('data', chunk => { body += chunk; });
       await new Promise(resolve => req.on('end', resolve));
 
       const selections = JSON.parse(body);
-      console.log('Selections:', selections);
+      console.log(`📝 [${requestId}] Selections:`, JSON.stringify(selections, null, 2));
 
+      console.log(`📝 [${requestId}] Calling generatePromptWithLLM...`);
       const generatedPrompt = await generatePromptWithLLM(selections);
+
+      console.log(`✅ [${requestId}] Prompt generated successfully`);
+      console.log(`✅ [${requestId}] Length:`, generatedPrompt.length, 'characters');
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ prompt: generatedPrompt }));
@@ -323,16 +346,19 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/recommend-selections - Get AI recommendations for selections
     if (req.method === 'POST' && url.pathname === '/api/recommend-selections') {
-      console.log('\n✨ Incoming selection recommendation request');
+      console.log(`\n✨ [${requestId}] Recommend Selections Request`);
 
       let body = '';
       req.on('data', chunk => { body += chunk; });
       await new Promise(resolve => req.on('end', resolve));
 
       const { product } = JSON.parse(body);
-      console.log('Product:', product);
+      console.log(`✨ [${requestId}] Product:`, product);
 
+      console.log(`✨ [${requestId}] Calling recommendSelections...`);
       const recommendations = await recommendSelections(product);
+
+      console.log(`✅ [${requestId}] Recommendations generated:`, JSON.stringify(recommendations, null, 2));
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ selections: recommendations }));
@@ -340,11 +366,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 404
+    console.log(`❌ [${requestId}] 404 Not Found: ${req.method} ${url.pathname}`);
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error(`❌ [${requestId}] Error:`, error);
+    console.error(`❌ [${requestId}] Stack:`, error.stack);
     res.writeHead(500);
     res.end(JSON.stringify({ error: error.message }));
   }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { VideoCard as VideoCardType } from '../types';
 import { VideoCard } from './VideoCard';
 
@@ -11,6 +12,8 @@ interface CardGridProps {
   onDelete: (id: string) => void;
 }
 
+const CARDS_PER_PAGE = 24;
+
 export function CardGrid({
   cards,
   onToggleFavorite,
@@ -20,6 +23,8 @@ export function CardGrid({
   onCardUpdate,
   onDelete,
 }: CardGridProps) {
+  const [currentPage, setCurrentPage] = useState(1);
+
   if (cards.length === 0) {
     return (
       <div className="text-center py-16">
@@ -49,20 +54,49 @@ export function CardGrid({
     );
   }
 
+  const totalPages = Math.ceil(cards.length / CARDS_PER_PAGE);
+  const startIndex = (currentPage - 1) * CARDS_PER_PAGE;
+  const endIndex = startIndex + CARDS_PER_PAGE;
+  const visibleCards = cards.slice(startIndex, endIndex);
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {cards.map((card) => (
-        <VideoCard
-          key={card.id}
-          card={card}
-          onToggleFavorite={onToggleFavorite}
-          onAddLabel={onAddLabel}
-          onRemoveLabel={onRemoveLabel}
-          onThumbnailGenerated={onThumbnailGenerated}
-          onCardUpdate={onCardUpdate}
-          onDelete={onDelete}
-        />
-      ))}
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {visibleCards.map((card) => (
+          <VideoCard
+            key={card.id}
+            card={card}
+            onToggleFavorite={onToggleFavorite}
+            onAddLabel={onAddLabel}
+            onRemoveLabel={onRemoveLabel}
+            onThumbnailGenerated={onThumbnailGenerated}
+            onCardUpdate={onCardUpdate}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-4">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          <span className="px-4 py-2 text-sm text-gray-700">
+            Page {currentPage} of {totalPages} ({cards.length} total)
+          </span>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
