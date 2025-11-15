@@ -4,6 +4,7 @@ export interface VideoCard {
   id: string; // uuid
   prompt: string;
   model: string; // replicate model ID
+  duration?: number; // video duration in seconds (defaults to 4 if not specified)
   status: VideoStatus;
   videoUrl?: string;
   thumbnailUrl?: string;

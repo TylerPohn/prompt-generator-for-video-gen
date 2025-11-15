@@ -7,6 +7,7 @@ import { pollPrediction } from '../services/polling';
 interface GenerateOptions {
   prompt: string;
   model: string;
+  duration: number;
   onCardCreate?: (card: VideoCard) => void;
   onCardUpdate: (id: string, updates: Partial<VideoCard>) => void;
   cardId?: string; // Optional - for retries
@@ -21,11 +22,13 @@ export function useVideoGeneration() {
   const generate = useCallback(async ({
     prompt,
     model,
+    duration,
     onCardCreate,
     onCardUpdate,
     cardId,
     retryCount = 0,
   }: GenerateOptions) => {
+    console.log('🎬 generate() called with:', { prompt, model, duration, cardId, retryCount });
     const id = cardId || uuidv4();
     const isRetry = Boolean(cardId);
 
@@ -35,13 +38,17 @@ export function useVideoGeneration() {
         id,
         prompt,
         model,
+        duration,
         status: 'pending',
         isFavorite: false,
         labels: [],
         createdAt: Date.now(),
         retryCount: 0,
       };
+      console.log('📝 Creating initial card:', initialCard);
       onCardCreate(initialCard);
+    } else {
+      console.log('⏭️ Skipping card creation (retry or no onCardCreate)');
     }
 
     setGenerating(prev => new Set(prev).add(id));
@@ -54,7 +61,7 @@ export function useVideoGeneration() {
         retryCount,
       });
 
-      const prediction = await replicateClient.createPrediction(model, prompt);
+      const prediction = await replicateClient.createPrediction(model, prompt, duration);
 
       // Store prediction ID
       onCardUpdate(id, { predictionId: prediction.id });
@@ -69,15 +76,19 @@ export function useVideoGeneration() {
       });
 
       // Extract video URL from output
+      console.log('Polling completed! Result:', result);
       const videoUrl = Array.isArray(result.output)
         ? result.output[0]
         : result.output;
+
+      console.log('Extracted video URL:', videoUrl);
 
       if (!videoUrl) {
         throw new Error('No video URL in response');
       }
 
       // Update with completed video
+      console.log(`Updating card ${id} to complete with URL:`, videoUrl);
       onCardUpdate(id, {
         status: 'complete',
         videoUrl,
@@ -121,6 +132,7 @@ export function useVideoGeneration() {
     await generate({
       prompt: card.prompt,
       model: card.model,
+      duration: card.duration || 4, // Fallback to 4 if not specified
       onCardUpdate,
       cardId: card.id,
       retryCount: nextRetryCount,

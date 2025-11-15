@@ -1,4 +1,7 @@
-export const REPLICATE_API_BASE = 'https://api.replicate.com/v1';
+// Use local backend (uses bash/curl) to avoid CORS issues
+export const REPLICATE_API_BASE = import.meta.env.DEV
+  ? 'http://localhost:3001/api'  // Dev: use local backend with bash/curl
+  : 'https://api.replicate.com/v1';  // Prod: would need backend server
 
 export function getApiKey(): string {
   const apiKey = import.meta.env.VITE_REPLICATE_API_KEY;

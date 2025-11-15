@@ -4,14 +4,20 @@ import { REPLICATE_API_BASE, getAuthHeaders } from './config';
 export class ReplicateClient {
   async createPrediction(
     modelId: string,
-    prompt: string
+    prompt: string,
+    duration: number = 4
   ): Promise<ReplicatePredictionResponse> {
-    const response = await fetch(`${REPLICATE_API_BASE}/predictions`, {
+    // Backend will handle the bash/curl call
+    const response = await fetch(`${REPLICATE_API_BASE}/predictions/${modelId}`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        version: modelId,
-        input: { prompt },
+        input: {
+          prompt,
+          duration
+        },
       }),
     });
 
@@ -28,7 +34,9 @@ export class ReplicateClient {
       `${REPLICATE_API_BASE}/predictions/${predictionId}`,
       {
         method: 'GET',
-        headers: getAuthHeaders(),
+        headers: {
+          'Content-Type': 'application/json',
+        },
       }
     );
 

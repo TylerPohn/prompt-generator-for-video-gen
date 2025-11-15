@@ -4,23 +4,23 @@ export interface ReplicateModel {
   description?: string;
 }
 
-// Hardcoded model list from PRD
+// Real Replicate video models that are verified to work
 export const AVAILABLE_MODELS: ReplicateModel[] = [
   {
-    id: "bytedance/seedance-1.0",
-    name: "Bytedance Seedance 1.0",
+    id: "google/veo-3.1",
+    name: "Google Veo 3.1",
+    description: "Google's latest video generation model - 4-8 second clips"
   },
   {
-    id: "hailuo/hailuo-02",
-    name: "Hailuo 02",
+    id: "bytedance/seedance-1-pro-fast",
+    name: "Seedance 1 Pro Fast",
+    description: "ByteDance's fast video generation model"
   },
   {
-    id: "kling/kling-2.5-turbo",
-    name: "Kling 2.5 Turbo",
+    id: "openai/sora-2",
+    name: "OpenAI Sora 2",
+    description: "OpenAI's advanced video generation model"
   },
-  {
-    id: "google/veo-3",
-    name: "Google Veo 3",
-  },
-  // Add best sora 2 model when available
+  // Note: Add more models as they become available on Replicate
+  // Check https://replicate.com/collections/video-generation for current models
 ];

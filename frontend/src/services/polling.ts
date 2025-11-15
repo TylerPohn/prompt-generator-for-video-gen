@@ -31,10 +31,15 @@ export async function pollPrediction(
 
     // Get current status
     const prediction = await replicateClient.getPrediction(predictionId);
+    console.log(`Polling ${predictionId}: status = ${prediction.status}`);
+    if (prediction.output) {
+      console.log(`Output available:`, prediction.output);
+    }
     opts.onUpdate(prediction);
 
     // Check if complete
     if (prediction.status === 'succeeded') {
+      console.log(`Video generation succeeded! Output:`, prediction.output);
       return prediction;
     }
 

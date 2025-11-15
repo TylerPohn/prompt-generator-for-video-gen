@@ -15,12 +15,32 @@ A local-only application for experimenting with video generation models via the 
    VITE_REPLICATE_API_KEY=your_api_key_here
    ```
 
-4. Run the development server:
+4. **Run both proxy server and frontend together:**
    ```bash
-   npm run dev
+   npm run dev:all
    ```
 
+   This starts:
+   - CORS proxy on http://localhost:3001 (handles API calls)
+   - Frontend on http://localhost:5173 (your app)
+
 5. Open http://localhost:5173 in your browser
+
+### Why the Proxy?
+
+The proxy server solves CORS (Cross-Origin Resource Sharing) issues when calling Replicate API from the browser. It:
+- Runs locally on your machine
+- Forwards API requests to Replicate with your API key
+- Returns responses with CORS headers enabled
+
+**Alternative:** Run them separately:
+```bash
+# Terminal 1
+npm run dev:proxy
+
+# Terminal 2
+npm run dev
+```
 
 ## Features
 

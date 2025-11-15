@@ -1,11 +1,16 @@
-import { useState, type FormEvent } from 'react';
+import { type FormEvent } from 'react';
 import { AVAILABLE_MODELS } from '../types';
 import { useVideoCards } from '../hooks/useVideoCards';
 import { useVideoGeneration } from '../hooks/useVideoGeneration';
 import { useLastModel } from '../hooks/useLastModel';
 
-export function PromptInputPanel() {
-  const [prompt, setPrompt] = useState('');
+interface PromptInputPanelProps {
+  prompt: string;
+  onPromptChange: (prompt: string) => void;
+  duration: number;
+}
+
+export function PromptInputPanel({ prompt, onPromptChange, duration }: PromptInputPanelProps) {
   const { lastModel, setLastModel } = useLastModel();
   const { addCard, updateCard } = useVideoCards();
   const { generate, isGenerating } = useVideoGeneration();
@@ -19,12 +24,13 @@ export function PromptInputPanel() {
     await generate({
       prompt: prompt.trim(),
       model: lastModel,
+      duration,
       onCardCreate: addCard,
       onCardUpdate: updateCard,
     });
 
     // Optionally clear prompt after submission
-    setPrompt('');
+    onPromptChange('');
   };
 
   return (
@@ -40,7 +46,7 @@ export function PromptInputPanel() {
           <textarea
             id="prompt"
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => onPromptChange(e.target.value)}
             placeholder="Enter your video prompt..."
             rows={4}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   PromptInputPanel,
   CardGrid,
@@ -5,9 +6,12 @@ import {
   FilterControls,
   ActiveFilters,
 } from './components';
+import { PromptGenerator } from './components/PromptGenerator';
 import { useVideoCards, useFilters } from './hooks';
 
 function App() {
+  const [currentPrompt, setCurrentPrompt] = useState('');
+  const [currentDuration, setCurrentDuration] = useState(4); // Default 4 seconds
   const { cards, toggleFavorite, addLabel, removeLabel, updateCard, deleteCard } = useVideoCards();
 
   // Initialize filters
@@ -37,8 +41,18 @@ function App() {
           </p>
         </header>
 
-        <div className="mb-8">
-          <PromptInputPanel />
+        <div className="mb-8 space-y-4">
+          <PromptGenerator
+            onUsePrompt={(prompt, duration) => {
+              setCurrentPrompt(prompt);
+              setCurrentDuration(duration);
+            }}
+          />
+          <PromptInputPanel
+            prompt={currentPrompt}
+            onPromptChange={setCurrentPrompt}
+            duration={currentDuration}
+          />
         </div>
 
         <div className="mt-12">
