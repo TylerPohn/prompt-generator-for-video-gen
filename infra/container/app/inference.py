@@ -159,13 +159,11 @@ class VideoGenerator:
             )
             logger.info("Pipeline components loaded")
 
-            # Step 3: Memory optimization strategy
-            # g5.12xlarge has 4× A10G GPUs (96GB total VRAM, 192GB RAM)
-            # GGUF Q8 transformer is ~14GB, other components ~16GB
-            # Use model CPU offload: keeps active model on GPU during inference,
-            # offloads to CPU between runs. Works with GGUF + fits in 192GB RAM
-            logger.info("Enabling model CPU offload for memory management...")
-            self.pipeline.enable_model_cpu_offload()
+            # Step 3: Move pipeline to GPU
+            # With Q4 quantization (~7.7GB) + VAE (~3GB) + encoders (~3GB) = ~14GB
+            # This fits comfortably in 24GB A10G GPU
+            logger.info("Moving pipeline to GPU...")
+            self.pipeline = self.pipeline.to(self.device)
 
             # Enable gradient checkpointing for transformer to reduce memory
             logger.info("Enabling gradient checkpointing on transformer...")
