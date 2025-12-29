@@ -165,13 +165,10 @@ class VideoGenerator:
             )
             logger.info("Pipeline components loaded")
 
-            # Move to GPU in smaller steps to avoid OOM during loading
-            logger.info("Moving VAE to GPU...")
-            self.pipeline.vae = self.pipeline.vae.to(self.device)
-            logger.info("Moving text encoders to GPU...")
-            self.pipeline.text_encoder = self.pipeline.text_encoder.to(self.device)
-            if hasattr(self.pipeline, 'text_encoder_2'):
-                self.pipeline.text_encoder_2 = self.pipeline.text_encoder_2.to(self.device)
+            # Enable model CPU offload for better memory management
+            # This keeps model parts on CPU and moves them to GPU only when needed
+            logger.info("Enabling model CPU offload for memory management...")
+            self.pipeline.enable_model_cpu_offload()
 
             # Enable gradient checkpointing for transformer to reduce memory
             logger.info("Enabling gradient checkpointing on transformer...")
