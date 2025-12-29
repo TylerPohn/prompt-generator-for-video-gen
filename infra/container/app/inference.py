@@ -148,6 +148,11 @@ class VideoGenerator:
             )
             logger.info("Transformer loaded from GGUF")
 
+            # Move transformer to GPU
+            logger.info("Moving transformer to GPU...")
+            transformer = transformer.to(self.device)
+            logger.info("Transformer moved to GPU")
+
             # Step 2: Load the rest of the pipeline with the quantized transformer
             # This loads VAE, text encoders, scheduler from HuggingFace
             logger.info(f"Loading pipeline components from {self.model_id}...")
