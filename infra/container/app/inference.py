@@ -156,9 +156,9 @@ class VideoGenerator:
                 self.model_id,
                 transformer=transformer,
                 torch_dtype=torch.bfloat16,
-                device_map="auto",  # Automatically manage device placement
+                device_map="balanced",  # Balance components across available GPUs
             )
-            logger.info("Pipeline components loaded with automatic device placement")
+            logger.info("Pipeline components loaded with balanced device placement")
 
             # Enable gradient checkpointing for transformer to reduce memory
             logger.info("Enabling gradient checkpointing on transformer...")
