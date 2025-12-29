@@ -8,7 +8,7 @@ export function useVideoCards() {
   );
 
   // Debounce localStorage writes to avoid performance issues
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardsRef = useRef(cards);
 
   // Keep ref updated

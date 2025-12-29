@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import type { VideoCard } from '../types';
 import { replicateClient } from '../services/replicateClient';
 import { pollPrediction } from '../services/polling';
+import { getAwsVideoClient } from '../services/awsVideoClient';
+import { parseModelId } from '../services/modelRouter';
 
 interface GenerateOptions {
   prompt: string;
@@ -19,18 +21,98 @@ const MAX_RETRIES = 3;
 export function useVideoGeneration() {
   const [generating, setGenerating] = useState<Set<string>>(new Set());
 
+  const generateWithAws = useCallback(async (
+    id: string,
+    prompt: string,
+    duration: number,
+    awsModelName: string,  // NEW: "hunyuan-video" or "ltx-video"
+    onCardUpdate: (id: string, updates: Partial<VideoCard>) => void
+  ) => {
+    const awsClient = getAwsVideoClient();
+
+    // Submit job to AWS
+    const submitResponse = await awsClient.submitJob({
+      prompt,
+      duration,
+      model: awsModelName,  // NEW: pass model to AWS API
+    });
+
+    console.log(`AWS job submitted: ${submitResponse.jobId} (model: ${awsModelName})`);
+    onCardUpdate(id, { predictionId: submitResponse.jobId });
+
+    // Poll for completion
+    const result = await awsClient.pollJobUntilComplete(submitResponse.jobId, {
+      pollInterval: 5000,
+      onStatusChange: (status) => {
+        console.log('AWS job status:', status.status);
+        if (status.status === 'processing') {
+          onCardUpdate(id, { status: 'generating' });
+        }
+      },
+    });
+
+    if (!result.videoUrl) {
+      throw new Error('No video URL in AWS response');
+    }
+
+    return result.videoUrl;
+  }, []);
+
+  const generateWithReplicate = useCallback(async (
+    id: string,
+    prompt: string,
+    model: string,
+    duration: number,
+    onCardUpdate: (id: string, updates: Partial<VideoCard>) => void
+  ) => {
+    const prediction = await replicateClient.createPrediction(model, prompt, duration);
+    onCardUpdate(id, { predictionId: prediction.id });
+
+    const result = await pollPrediction(prediction.id, {
+      onUpdate: (pred) => {
+        if (pred.status === 'processing') {
+          onCardUpdate(id, { status: 'generating' });
+        }
+      },
+    });
+
+    console.log('Polling completed! Result:', result);
+    const videoUrl = Array.isArray(result.output)
+      ? result.output[0]
+      : result.output;
+
+    if (!videoUrl) {
+      throw new Error('No video URL in response');
+    }
+
+    return videoUrl;
+  }, []);
+
   const generate = useCallback(async ({
     prompt,
-    model,
+    model,  // NOW full model ID: "aws:hunyuan-video" or "replicate:google/veo-3.1"
     duration,
     onCardCreate,
     onCardUpdate,
     cardId,
     retryCount = 0,
   }: GenerateOptions) => {
-    console.log('🎬 generate() called with:', { prompt, model, duration, cardId, retryCount });
     const id = cardId || uuidv4();
     const isRetry = Boolean(cardId);
+
+    // Parse model ID to determine routing
+    const routeInfo = parseModelId(model);
+
+    console.log('🎬 generate() called with:', {
+      prompt,
+      model,
+      duration,
+      cardId,
+      retryCount,
+      backend: routeInfo.backend,
+      awsModel: routeInfo.awsModelName,
+      replicateModel: routeInfo.replicateModelId,
+    });
 
     // Create initial card (only if not retry)
     if (!isRetry && onCardCreate) {
@@ -38,6 +120,7 @@ export function useVideoGeneration() {
         id,
         prompt,
         model,
+        backend: routeInfo.backend,  // NEW
         duration,
         status: 'pending',
         isFavorite: false,
@@ -61,31 +144,30 @@ export function useVideoGeneration() {
         retryCount,
       });
 
-      const prediction = await replicateClient.createPrediction(model, prompt, duration);
+      let videoUrl: string;
 
-      // Store prediction ID
-      onCardUpdate(id, { predictionId: prediction.id });
-
-      // Poll for completion
-      const result = await pollPrediction(prediction.id, {
-        onUpdate: (pred) => {
-          if (pred.status === 'processing') {
-            onCardUpdate(id, { status: 'generating' });
-          }
-        },
-      });
-
-      // Extract video URL from output
-      console.log('Polling completed! Result:', result);
-      const videoUrl = Array.isArray(result.output)
-        ? result.output[0]
-        : result.output;
+      // Route based on parsed model info
+      if (routeInfo.backend === 'aws') {
+        console.log(`🌩️ Using AWS backend: ${routeInfo.awsModelName}`);
+        videoUrl = await generateWithAws(
+          id,
+          prompt,
+          duration,
+          routeInfo.awsModelName!,
+          onCardUpdate
+        );
+      } else {
+        console.log(`🔧 Using Replicate backend: ${routeInfo.replicateModelId}`);
+        videoUrl = await generateWithReplicate(
+          id,
+          prompt,
+          routeInfo.replicateModelId!,
+          duration,
+          onCardUpdate
+        );
+      }
 
       console.log('Extracted video URL:', videoUrl);
-
-      if (!videoUrl) {
-        throw new Error('No video URL in response');
-      }
 
       // Update with completed video
       console.log(`Updating card ${id} to complete with URL:`, videoUrl);
@@ -112,7 +194,7 @@ export function useVideoGeneration() {
         return next;
       });
     }
-  }, []);
+  }, [generateWithAws, generateWithReplicate]);
 
   const retry = useCallback(async (
     card: VideoCard,

@@ -53,6 +53,7 @@ function App() {
             prompt={currentPrompt}
             onPromptChange={setCurrentPrompt}
             duration={currentDuration}
+            onDurationChange={setCurrentDuration}
             onCardCreate={addCard}
             onCardUpdate={updateCard}
           />

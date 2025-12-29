@@ -12,10 +12,16 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
     pain_point: undefined,
     tone: undefined,
     visual_style: undefined,
-    character_type: undefined,
-    character_vibe: undefined,
-    character_perception: undefined,
-    group_context: undefined,
+    furniture_style: undefined,
+    brand_voice: undefined,
+    product_category: undefined,
+    room_setting: undefined,
+    furniture_material: undefined,
+    furniture_benefit: undefined,
+    product_highlights: undefined,
+    environment_style: undefined,
+    people_in_scene: undefined,
+    lifestyle_context: undefined,
     problem_context: undefined,
     emotion_first_3_seconds: undefined,
     platform: undefined,
@@ -28,7 +34,7 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isGettingRecommendations, setIsGettingRecommendations] = useState(false);
 
-  const updateSelection = (key: keyof PromptSelections, value: string | number) => {
+  const updateSelection = (key: keyof PromptSelections, value: string | number | undefined) => {
     setSelections(prev => ({ ...prev, [key]: value }));
   };
 
@@ -92,6 +98,24 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
   };
 
   const formatLabel = (key: string) => {
+    // Custom labels for furniture-specific fields
+    const customLabels: Record<string, string> = {
+      'furniture_style': 'Brand Aesthetic / Style',
+      'brand_voice': 'Brand Voice',
+      'product_category': 'Product Category',
+      'room_setting': 'Room Setting',
+      'furniture_material': 'Material(s)',
+      'furniture_benefit': 'Key Benefit',
+      'product_highlights': 'Highlight Features',
+      'environment_style': 'Setting / Environment Style',
+      'people_in_scene': 'People in Scene',
+      'lifestyle_context': 'Lifestyle Context',
+    };
+
+    if (customLabels[key]) {
+      return customLabels[key];
+    }
+
     return key.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
@@ -106,7 +130,10 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">AI Prompt Generator</h2>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Furniture Ad Prompt Generator</h2>
+          <p className="text-sm text-gray-500 mt-1">Create AI-powered video prompts for furniture advertisements</p>
+        </div>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="text-sm text-blue-600 hover:text-blue-700"
@@ -119,7 +146,7 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
         <div className="space-y-4 mb-6">
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Product
+              Furniture Product
             </label>
             <div className="flex gap-2">
               <div className="flex-1">
@@ -130,12 +157,12 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
                     const value = e.target.value.slice(0, 20); // Max 20 chars
                     updateSelection('product', value);
                   }}
-                  placeholder="e.g., Energy Drink, Wireless Earbuds"
+                  placeholder="e.g., Modern Sofa, Ergonomic Chair"
                   maxLength={20}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  {selections.product.length}/20 characters
+                  {selections.product?.length ?? 0}/20 characters
                 </p>
               </div>
               <button
@@ -165,6 +192,7 @@ export function PromptGenerator({ onUsePrompt }: PromptGeneratorProps) {
           <div className="grid grid-cols-2 gap-4">
             {(Object.keys(selections) as Array<keyof PromptSelections>)
               .filter(key => key !== 'product') // Product has its own input above
+              .filter(key => key in PROMPT_OPTIONS) // Only show parameters that exist in PROMPT_OPTIONS
               .map((key) => (
               <div key={key}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

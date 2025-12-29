@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  video-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wan2-video-generator:latest
+    container_name: wan2-video-generator
+
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Ports
+    ports:
+      - "8000:8000"
+
+    # Environment variables
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - HF_HOME=/app/hf_cache
+      - TRANSFORMERS_CACHE=/app/hf_cache
+      - TORCH_HOME=/app/torch_cache
+      - TEMP_VIDEO_DIR=/app/tmp_videos
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+    # Volumes for caching models (optional but recommended)
+    volumes:
+      - model-cache:/app/hf_cache
+      - torch-cache:/app/torch_cache
+      - ./logs:/app/logs
+
+    # Resource limits
+    mem_limit: 24g
+    memswap_limit: 24g
+    shm_size: 8gb
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  model-cache:
+    driver: local
+  torch-cache:
+    driver: local

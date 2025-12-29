@@ -1,0 +1,37 @@
+{
+  "name": "ai-video-infra",
+  "version": "1.0.0",
+  "description": "AWS CDK infrastructure for AI video generation",
+  "main": "bin/app.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "diff": "cdk diff",
+    "destroy": "cdk destroy"
+  },
+  "keywords": [
+    "cdk",
+    "aws",
+    "video-generation",
+    "gpu-inference"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "aws-cdk": "^2.114.0",
+    "esbuild": "^0.19.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-apigatewayv2-alpha": "^2.114.0-alpha.0",
+    "@aws-cdk/aws-apigatewayv2-integrations-alpha": "^2.114.0-alpha.0",
+    "aws-cdk-lib": "^2.114.0",
+    "constructs": "^10.3.0",
+    "dotenv": "^16.3.1"
+  }
+}

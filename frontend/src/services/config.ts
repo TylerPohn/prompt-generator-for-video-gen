@@ -1,3 +1,34 @@
+// Backend configuration
+// Priority: AWS API > Local Backend > Direct Replicate
+
+export type BackendType = 'aws' | 'local' | 'replicate';
+
+// Check if AWS API is configured
+export function isAwsConfigured(): boolean {
+  return !!(
+    import.meta.env.VITE_AWS_VIDEO_API_ENDPOINT &&
+    import.meta.env.VITE_AWS_VIDEO_API_KEY
+  );
+}
+
+// Get the active backend type
+export function getBackendType(): BackendType {
+  // If AWS is configured, prefer it (production-ready)
+  if (isAwsConfigured()) {
+    return 'aws';
+  }
+  // In dev mode, use local backend server
+  if (import.meta.env.DEV) {
+    return 'local';
+  }
+  // Fallback to direct Replicate (would need CORS handling)
+  return 'replicate';
+}
+
+// AWS API configuration
+export const AWS_VIDEO_API_ENDPOINT = import.meta.env.VITE_AWS_VIDEO_API_ENDPOINT || '';
+export const AWS_VIDEO_API_KEY = import.meta.env.VITE_AWS_VIDEO_API_KEY || '';
+
 // Use local backend (uses bash/curl) to avoid CORS issues
 export const REPLICATE_API_BASE = import.meta.env.DEV
   ? 'http://localhost:3001/api'  // Dev: use local backend with bash/curl

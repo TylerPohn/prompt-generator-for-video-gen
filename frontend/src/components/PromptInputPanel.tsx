@@ -1,5 +1,5 @@
-import { type FormEvent } from 'react';
-import { AVAILABLE_MODELS } from '../types';
+import { type FormEvent, useMemo } from 'react';
+import { getAvailableModels } from '../services/modelRouter';
 import type { VideoCard } from '../types';
 import { useVideoGeneration } from '../hooks/useVideoGeneration';
 import { useLastModel } from '../hooks/useLastModel';
@@ -8,13 +8,27 @@ interface PromptInputPanelProps {
   prompt: string;
   onPromptChange: (prompt: string) => void;
   duration: number;
+  onDurationChange: (duration: number) => void;
   onCardCreate: (card: VideoCard) => void;
   onCardUpdate: (id: string, updates: Partial<VideoCard>) => void;
 }
 
-export function PromptInputPanel({ prompt, onPromptChange, duration, onCardCreate, onCardUpdate }: PromptInputPanelProps) {
+export function PromptInputPanel({ prompt, onPromptChange, duration, onDurationChange, onCardCreate, onCardUpdate }: PromptInputPanelProps) {
   const { lastModel, setLastModel } = useLastModel();
   const { generate, isGenerating } = useVideoGeneration();
+
+  // Group models by backend
+  const { awsModels, replicateModels, availableModels } = useMemo(() => {
+    const available = getAvailableModels();
+    const aws = available.filter(m => m.backend === 'aws');
+    const replicate = available.filter(m => m.backend === 'replicate');
+    return { awsModels: aws, replicateModels: replicate, availableModels: available };
+  }, []);
+
+  // Get description for selected model
+  const selectedModelDescription = useMemo(() => {
+    return availableModels.find(m => m.id === lastModel)?.description || '';
+  }, [lastModel, availableModels]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -57,10 +71,35 @@ export function PromptInputPanel({ prompt, onPromptChange, duration, onCardCreat
 
         <div>
           <label
-            htmlFor="model"
-            className="block text-sm font-medium text-gray-700 mb-2"
+            htmlFor="duration"
+            className="block text-sm font-medium text-gray-700 mb-1"
           >
-            Model
+            Video Length
+          </label>
+          <select
+            id="duration"
+            value={duration}
+            onChange={(e) => onDurationChange(Number(e.target.value))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            disabled={isGenerating}
+          >
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((sec) => (
+              <option key={sec} value={sec}>
+                {sec} second{sec !== 1 ? 's' : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            💡 Use 1-3s for memory-constrained GPUs
+          </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor="model"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
+            Model / GPU Selection
           </label>
           <select
             id="model"
@@ -69,12 +108,31 @@ export function PromptInputPanel({ prompt, onPromptChange, duration, onCardCreat
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             disabled={isGenerating}
           >
-            {AVAILABLE_MODELS.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-              </option>
-            ))}
+            {awsModels.length > 0 && (
+              <optgroup label="🔥 AWS GPU (Self-Hosted)">
+                {awsModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+
+            <optgroup label="☁️ Replicate API">
+              {replicateModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name}
+                </option>
+              ))}
+            </optgroup>
           </select>
+
+          {/* Show description for selected model */}
+          {selectedModelDescription && (
+            <p className="text-xs text-gray-500 mt-1">
+              {selectedModelDescription}
+            </p>
+          )}
         </div>
 
         <button

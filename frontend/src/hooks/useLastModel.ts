@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { StorageKeys, getFromStorage, setToStorage } from '../utils/localStorage';
-import { AVAILABLE_MODELS } from '../types';
+import { getAvailableModels, getDefaultModel } from '../services/modelRouter';
 
 export function useLastModel() {
   const [lastModel, setLastModel] = useState<string>(() => {
+    const defaultModel = getDefaultModel();
     const stored = getFromStorage<string>(
       StorageKeys.LAST_MODEL,
-      AVAILABLE_MODELS[0]?.id || ''
+      defaultModel
     );
 
     // Validate that the stored model still exists in available models
-    const isValidModel = AVAILABLE_MODELS.some(model => model.id === stored);
+    const availableModels = getAvailableModels();
+    const isValidModel = availableModels.some(model => model.id === stored);
 
-    return isValidModel ? stored : (AVAILABLE_MODELS[0]?.id || '');
+    return isValidModel ? stored : defaultModel;
   });
 
   useEffect(() => {
