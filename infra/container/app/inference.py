@@ -46,8 +46,9 @@ class VideoGenerator:
     """
 
     # Default GGUF model path (can be overridden via environment variable)
-    # Note: File name uses uppercase Q8_0 per HuggingFace naming convention
-    DEFAULT_GGUF_PATH = "/app/models/hunyuan-video-t2v-720p-Q8_0.gguf"
+    # Note: Using Q4_0 quantization (~7GB) for better GPU memory fit
+    #       Q8_0 is ~14GB and doesn't fit in 24GB GPU with all other components
+    DEFAULT_GGUF_PATH = "/app/models/hunyuan-video-t2v-720p-Q4_0.gguf"
 
     def __init__(
         self,
@@ -104,10 +105,10 @@ class VideoGenerator:
             models_dir = os.path.dirname(self.gguf_path)
             os.makedirs(models_dir, exist_ok=True)
 
-            # Download the GGUF model
+            # Download the GGUF model (Q4_0 quantization for memory efficiency)
             downloaded_path = hf_hub_download(
                 repo_id="city96/HunyuanVideo-gguf",
-                filename="hunyuan-video-t2v-720p-Q8_0.gguf",
+                filename="hunyuan-video-t2v-720p-Q4_0.gguf",
                 local_dir=models_dir,
             )
             logger.info(f"GGUF model downloaded to: {downloaded_path}")

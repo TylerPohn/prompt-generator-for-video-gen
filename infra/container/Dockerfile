@@ -27,7 +27,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HOME=/app/hf_cache \
     TRANSFORMERS_CACHE=/app/hf_cache \
     TORCH_HOME=/app/torch_cache \
-    GGUF_MODEL_PATH=/app/models/hunyuan-video-t2v-720p-Q8_0.gguf \
+    GGUF_MODEL_PATH=/app/models/hunyuan-video-t2v-720p-Q4_0.gguf \
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:512 \
     CUDA_LAUNCH_BLOCKING=0 \
     PYTORCH_NO_CUDA_MEMORY_CACHING=0
@@ -84,13 +84,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Create cache directories
 RUN mkdir -p /app/hf_cache /app/torch_cache /app/tmp_videos /app/logs /app/models
 
-# GGUF Q8 quantized model (~14GB) will be downloaded at runtime
-# This is the transformer model quantized with GGUF Q8 for near-lossless quality
+# GGUF Q4 quantized model (~7GB) will be downloaded at runtime
+# This is the transformer model quantized with GGUF Q4 for good quality with lower memory
 # Source: https://huggingface.co/city96/HunyuanVideo-gguf
+# Using Q4 instead of Q8 to fit in 24GB GPU alongside VAE and text encoders
 # The model is too large to include in the Docker image during build.
 # It will be downloaded on first startup to the /app/models directory,
 # which should be mounted as a persistent volume on the GPU instance.
-# Model file: hunyuan-video-t2v-720p-Q8_0.gguf (note: uppercase Q8_0)
+# Model file: hunyuan-video-t2v-720p-Q4_0.gguf (note: uppercase Q4_0)
 
 # Copy application code
 COPY app/ ./app/
