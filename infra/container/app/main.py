@@ -31,6 +31,10 @@ logger.add(
 # Global model instance
 video_generator: Optional[VideoGenerator] = None
 
+# In-memory job status tracking
+# Format: {job_id: {status, video_key, error, started_at, completed_at, generation_time_seconds}}
+job_statuses: dict = {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -98,12 +102,22 @@ class GenerateRequest(BaseModel):
 
 
 class GenerateResponse(BaseModel):
-    """Response model for video generation."""
+    """Response model for video generation - immediate response."""
     status: str
-    video_key: Optional[str] = None
     job_id: str
-    message: Optional[str] = None
+    message: str
+
+
+class JobStatusResponse(BaseModel):
+    """Response model for job status polling."""
+    status: str  # 'processing', 'completed', 'failed'
+    job_id: str
+    video_key: Optional[str] = None
+    error: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
     generation_time_seconds: Optional[float] = None
+    message: Optional[str] = None
 
 
 class GpuMemory(BaseModel):
@@ -178,50 +192,27 @@ async def health_check():
     )
 
 
-@app.post("/generate", response_model=GenerateResponse)
-async def generate_video(
-    request: GenerateRequest,
-    background_tasks: BackgroundTasks
-):
+async def generate_video_background(request: GenerateRequest):
     """
-    Generate video from text prompt using HunyuanVideo-1.5.
-
-    This endpoint:
-    1. Validates the request
-    2. Generates video using the loaded model
-    3. Uploads the video to S3
-    4. Returns the S3 key
+    Background task to generate video and update job status.
+    This runs asynchronously while the /generate endpoint returns immediately.
     """
-    if not video_generator:
-        logger.error("Model not loaded")
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    # Validate model selection
-    # Note: Currently only hunyuan-video is loaded. ltx-video support requires separate pipeline.
-    if request.model not in ["hunyuan-video", "ltx-video"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid model: {request.model}. Supported models: hunyuan-video, ltx-video"
-        )
-
-    if request.model == "ltx-video":
-        # TODO: Implement LTX-Video pipeline support
-        raise HTTPException(
-            status_code=501,
-            detail="LTX-Video support not yet implemented. Currently only hunyuan-video is available."
-        )
-
-    logger.info(f"Starting generation for job_id: {request.job_id}")
-    logger.info(f"Model: {request.model}")
-    logger.info(f"Prompt: {request.prompt}")
-    logger.info(f"Parameters - steps: {request.steps}, duration: {request.duration}s, fps: {request.fps}")
-
+    job_id = request.job_id
     start_time = datetime.utcnow()
     temp_video_path = None
 
     try:
+        # Update status to processing
+        job_statuses[job_id] = {
+            "status": "processing",
+            "job_id": job_id,
+            "started_at": start_time.isoformat(),
+            "message": "Video generation in progress"
+        }
+
+        logger.info(f"[{job_id}] Starting background video generation...")
+
         # Generate video
-        logger.info(f"[{request.job_id}] Starting inference...")
         temp_video_path = await asyncio.to_thread(
             video_generator.generate,
             prompt=request.prompt,
@@ -237,11 +228,11 @@ async def generate_video(
         if not temp_video_path or not os.path.exists(temp_video_path):
             raise VideoGenerationError("Video generation failed - no output file")
 
-        logger.info(f"[{request.job_id}] Video generated: {temp_video_path}")
+        logger.info(f"[{job_id}] Video generated: {temp_video_path}")
 
         # Upload to S3
-        logger.info(f"[{request.job_id}] Uploading to S3 bucket: {request.bucket_name}")
-        video_key = f"generated-videos/{request.job_id}.mp4"
+        logger.info(f"[{job_id}] Uploading to S3 bucket: {request.bucket_name}")
+        video_key = f"generated-videos/{job_id}.mp4"
 
         s3_url = await asyncio.to_thread(
             upload_to_s3,
@@ -250,50 +241,128 @@ async def generate_video(
             s3_key=video_key
         )
 
-        logger.info(f"[{request.job_id}] Upload successful: {s3_url}")
+        logger.info(f"[{job_id}] Upload successful: {s3_url}")
 
         # Calculate generation time
         generation_time = (datetime.utcnow() - start_time).total_seconds()
 
-        # Schedule cleanup in background
-        if temp_video_path:
-            background_tasks.add_task(cleanup_temp_file, temp_video_path)
+        # Update status to completed
+        job_statuses[job_id] = {
+            "status": "completed",
+            "job_id": job_id,
+            "video_key": video_key,
+            "started_at": start_time.isoformat(),
+            "completed_at": datetime.utcnow().isoformat(),
+            "generation_time_seconds": round(generation_time, 2),
+            "message": "Video generated and uploaded successfully"
+        }
 
-        logger.info(f"[{request.job_id}] Completed in {generation_time:.2f}s")
-
-        return GenerateResponse(
-            status="completed",
-            video_key=video_key,
-            job_id=request.job_id,
-            message="Video generated and uploaded successfully",
-            generation_time_seconds=round(generation_time, 2)
-        )
-
-    except VideoGenerationError as e:
-        logger.error(f"[{request.job_id}] Video generation error: {str(e)}")
-        logger.error(traceback.format_exc())
-
-        # Cleanup on error
-        if temp_video_path:
-            background_tasks.add_task(cleanup_temp_file, temp_video_path)
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Video generation failed: {str(e)}"
-        )
+        logger.info(f"[{job_id}] Completed in {generation_time:.2f}s")
 
     except Exception as e:
-        logger.error(f"[{request.job_id}] Unexpected error: {str(e)}")
+        logger.error(f"[{job_id}] Background generation error: {str(e)}")
         logger.error(traceback.format_exc())
 
-        # Cleanup on error
-        if temp_video_path:
-            background_tasks.add_task(cleanup_temp_file, temp_video_path)
+        # Update status to failed
+        job_statuses[job_id] = {
+            "status": "failed",
+            "job_id": job_id,
+            "error": str(e),
+            "started_at": start_time.isoformat(),
+            "completed_at": datetime.utcnow().isoformat(),
+            "message": f"Video generation failed: {str(e)}"
+        }
 
+    finally:
+        # Cleanup temp file
+        if temp_video_path and os.path.exists(temp_video_path):
+            try:
+                await asyncio.to_thread(cleanup_temp_file, temp_video_path)
+            except Exception as e:
+                logger.error(f"[{job_id}] Cleanup error: {str(e)}")
+
+
+@app.post("/generate", response_model=GenerateResponse)
+async def generate_video(request: GenerateRequest):
+    """
+    Start video generation from text prompt using HunyuanVideo-1.5.
+
+    This endpoint returns immediately after accepting the job.
+    Use GET /status/{job_id} to poll for completion status.
+
+    Returns:
+    - status: "accepted"
+    - job_id: The job ID to use for status polling
+    - message: Instructions for status polling
+    """
+    if not video_generator:
+        logger.error("Model not loaded")
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    # Validate model selection
+    if request.model not in ["hunyuan-video", "ltx-video"]:
         raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
+            status_code=400,
+            detail=f"Invalid model: {request.model}. Supported models: hunyuan-video, ltx-video"
         )
+
+    if request.model == "ltx-video":
+        raise HTTPException(
+            status_code=501,
+            detail="LTX-Video support not yet implemented. Currently only hunyuan-video is available."
+        )
+
+    logger.info(f"Accepting job_id: {request.job_id}")
+    logger.info(f"Model: {request.model}")
+    logger.info(f"Prompt: {request.prompt}")
+    logger.info(f"Parameters - steps: {request.steps}, duration: {request.duration}s, fps: {request.fps}")
+
+    # Initialize job status
+    job_statuses[request.job_id] = {
+        "status": "accepted",
+        "job_id": request.job_id,
+        "started_at": datetime.utcnow().isoformat(),
+        "message": "Job accepted, starting generation"
+    }
+
+    # Start generation in background
+    asyncio.create_task(generate_video_background(request))
+
+    return GenerateResponse(
+        status="accepted",
+        job_id=request.job_id,
+        message=f"Job accepted. Poll GET /status/{request.job_id} for progress."
+    )
+
+
+@app.get("/status/{job_id}", response_model=JobStatusResponse)
+async def get_job_status(job_id: str):
+    """
+    Get the current status of a video generation job.
+
+    Status values:
+    - "accepted": Job has been accepted and queued
+    - "processing": Video generation is in progress
+    - "completed": Video has been generated and uploaded to S3
+    - "failed": Video generation failed
+
+    Returns job status with additional details when available.
+    """
+    if job_id not in job_statuses:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    status_data = job_statuses[job_id]
+
+    return JobStatusResponse(
+        status=status_data.get("status"),
+        job_id=job_id,
+        video_key=status_data.get("video_key"),
+        error=status_data.get("error"),
+        started_at=status_data.get("started_at"),
+        completed_at=status_data.get("completed_at"),
+        generation_time_seconds=status_data.get("generation_time_seconds"),
+        message=status_data.get("message")
+    )
 
 
 @app.exception_handler(Exception)

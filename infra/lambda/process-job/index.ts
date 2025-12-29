@@ -49,10 +49,19 @@ interface FastAPIGenerateRequest {
 
 interface FastAPIGenerateResponse {
   status: string;
-  video_key?: string;
   job_id: string;
-  message?: string;
+  message: string;
+}
+
+interface FastAPIStatusResponse {
+  status: string;  // 'accepted', 'processing', 'completed', 'failed'
+  job_id: string;
+  video_key?: string;
+  error?: string;
+  started_at?: string;
+  completed_at?: string;
   generation_time_seconds?: number;
+  message?: string;
 }
 
 async function updateJobStatus(
@@ -101,7 +110,7 @@ async function updateJobStatus(
 async function generateVideoWithGpu(
   jobId: string,
   prompt: string,
-  model: string,       // NEW: model parameter
+  model: string,
   seed?: number,
   steps?: number,
   duration?: number
@@ -110,20 +119,21 @@ async function generateVideoWithGpu(
 
   const requestBody: FastAPIGenerateRequest = {
     prompt,
-    model,              // NEW: include model in request
+    model,
     job_id: jobId,
     bucket_name: BUCKET_NAME,
     seed,
     steps: steps || 30,
     duration: duration || 3,
-    width: 288,         // Reduced from 360 to 288 for 9:16 aspect ratio (GPU memory constraints)
-    height: 512,        // Reduced from 640 to 512 for 9:16 aspect ratio (GPU memory constraints)
+    width: 288,
+    height: 512,
   };
 
   console.log(`Calling GPU endpoint: ${gpuEndpoint}/generate with model: ${model}`);
   console.log(`Request body: ${JSON.stringify(requestBody)}`);
 
-  const response = await fetch(`${gpuEndpoint}/generate`, {
+  // Step 1: Submit job (returns immediately)
+  const submitResponse = await fetch(`${gpuEndpoint}/generate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -131,20 +141,66 @@ async function generateVideoWithGpu(
     body: JSON.stringify(requestBody),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`GPU API error: ${response.status} - ${errorText}`);
+  if (!submitResponse.ok) {
+    const errorText = await submitResponse.text();
+    throw new Error(`GPU API error: ${submitResponse.status} - ${errorText}`);
   }
 
-  const data: FastAPIGenerateResponse = await response.json();
-  console.log(`GPU response: ${JSON.stringify(data)}`);
+  const submitData: FastAPIGenerateResponse = await submitResponse.json();
+  console.log(`Job accepted: ${JSON.stringify(submitData)}`);
 
-  if (data.status !== 'completed' || !data.video_key) {
-    throw new Error(data.message || 'Video generation failed');
+  if (submitData.status !== 'accepted') {
+    throw new Error(submitData.message || 'Job not accepted by GPU');
   }
 
-  console.log(`Video generated in ${data.generation_time_seconds}s: ${data.video_key}`);
-  return data.video_key;
+  // Step 2: Poll for status until completed or failed
+  const pollIntervalMs = 15000; // Poll every 15 seconds
+  const maxPollingTimeMs = 12 * 60 * 1000; // 12 minutes (Lambda has 15 min max)
+  const startTime = Date.now();
+
+  while (true) {
+    // Check if we've exceeded max polling time
+    if (Date.now() - startTime > maxPollingTimeMs) {
+      throw new Error('Video generation timed out after 12 minutes');
+    }
+
+    // Wait before polling (except for first check)
+    if (Date.now() - startTime > 0) {
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    // Poll status endpoint
+    console.log(`Polling status for job ${jobId}...`);
+    const statusResponse = await fetch(`${gpuEndpoint}/status/${jobId}`);
+
+    if (!statusResponse.ok) {
+      if (statusResponse.status === 404) {
+        throw new Error(`Job ${jobId} not found on GPU server`);
+      }
+      const errorText = await statusResponse.text();
+      throw new Error(`Status API error: ${statusResponse.status} - ${errorText}`);
+    }
+
+    const statusData: FastAPIStatusResponse = await statusResponse.json();
+    console.log(`Status: ${statusData.status}, message: ${statusData.message}`);
+
+    // Check if completed
+    if (statusData.status === 'completed') {
+      if (!statusData.video_key) {
+        throw new Error('Job completed but no video_key provided');
+      }
+      console.log(`Video generated in ${statusData.generation_time_seconds}s: ${statusData.video_key}`);
+      return statusData.video_key;
+    }
+
+    // Check if failed
+    if (statusData.status === 'failed') {
+      throw new Error(statusData.error || statusData.message || 'Video generation failed');
+    }
+
+    // Still processing, continue polling
+    console.log(`Job still ${statusData.status}, continuing to poll...`);
+  }
 }
 
 async function processRecord(record: SQSRecord): Promise<void> {

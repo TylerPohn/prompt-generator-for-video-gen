@@ -38,7 +38,7 @@ export class VideoApiStack extends cdk.Stack {
     // Main SQS Queue for video generation jobs
     this.jobQueue = new sqs.Queue(this, 'VideoJobQueue', {
       queueName: 'video-generation-queue',
-      visibilityTimeout: cdk.Duration.seconds(600), // 10 minutes for video generation
+      visibilityTimeout: cdk.Duration.seconds(900), // 15 minutes (matches Lambda timeout)
       receiveMessageWaitTime: cdk.Duration.seconds(20), // Long polling
       deadLetterQueue: {
         queue: deadLetterQueue,
@@ -135,7 +135,7 @@ export class VideoApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: path.join(__dirname, '../lambda/process-job/index.ts'),
       handler: 'handler',
-      timeout: cdk.Duration.minutes(10), // Video generation can take time
+      timeout: cdk.Duration.minutes(15), // 15 minutes max (AWS Lambda limit) for polling
       memorySize: 512,
       vpc: props.gpuInferenceStack.vpc,
       securityGroups: [processJobSecurityGroup],
