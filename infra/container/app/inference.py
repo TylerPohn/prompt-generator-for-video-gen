@@ -152,13 +152,21 @@ class VideoGenerator:
             # This loads VAE, text encoders, scheduler from HuggingFace
             logger.info(f"Loading pipeline components from {self.model_id}...")
 
+            # Load pipeline components - transformer already loaded above
             self.pipeline = HunyuanVideoPipeline.from_pretrained(
                 self.model_id,
                 transformer=transformer,
                 torch_dtype=torch.bfloat16,
-                device_map="balanced",  # Balance components across available GPUs
             )
-            logger.info("Pipeline components loaded with balanced device placement")
+            logger.info("Pipeline components loaded")
+
+            # Move to GPU in smaller steps to avoid OOM during loading
+            logger.info("Moving VAE to GPU...")
+            self.pipeline.vae = self.pipeline.vae.to(self.device)
+            logger.info("Moving text encoders to GPU...")
+            self.pipeline.text_encoder = self.pipeline.text_encoder.to(self.device)
+            if hasattr(self.pipeline, 'text_encoder_2'):
+                self.pipeline.text_encoder_2 = self.pipeline.text_encoder_2.to(self.device)
 
             # Enable gradient checkpointing for transformer to reduce memory
             logger.info("Enabling gradient checkpointing on transformer...")
