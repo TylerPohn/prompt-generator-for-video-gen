@@ -156,14 +156,9 @@ class VideoGenerator:
                 self.model_id,
                 transformer=transformer,
                 torch_dtype=torch.bfloat16,
+                device_map="auto",  # Automatically manage device placement
             )
-            logger.info("Pipeline components loaded")
-
-            # Step 3: Move pipeline to GPU
-            # With Q4 quantization (~7.7GB) + VAE (~3GB) + encoders (~3GB) = ~14GB
-            # This fits comfortably in 24GB A10G GPU
-            logger.info("Moving pipeline to GPU...")
-            self.pipeline = self.pipeline.to(self.device)
+            logger.info("Pipeline components loaded with automatic device placement")
 
             # Enable gradient checkpointing for transformer to reduce memory
             logger.info("Enabling gradient checkpointing on transformer...")
