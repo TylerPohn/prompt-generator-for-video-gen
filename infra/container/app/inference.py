@@ -445,17 +445,17 @@ class LTXVideoGenerator(BaseVideoGenerator):
             self.image_pipeline = LTXImageToVideoPipeline.from_pipe(self.text_pipeline)
             logger.info("Image-to-video pipeline created (sharing weights)")
 
-            # Enable FP8 layerwise casting for VRAM savings on both pipelines
+            # Enable FP8 layerwise casting for VRAM savings
+            # Only apply to text_pipeline since image_pipeline shares the same transformer
             if self.use_fp8:
-                for pipeline_name, pipeline in [("text", self.text_pipeline), ("image", self.image_pipeline)]:
-                    if hasattr(pipeline.transformer, 'enable_layerwise_casting'):
-                        logger.info(f"Enabling FP8 layerwise casting for {pipeline_name} pipeline...")
-                        pipeline.transformer.enable_layerwise_casting(
-                            storage_dtype=torch.float8_e4m3fn,
-                            compute_dtype=torch.bfloat16
-                        )
-                    else:
-                        logger.warning(f"Transformer doesn't support FP8 layerwise casting ({pipeline_name})")
+                if hasattr(self.text_pipeline.transformer, 'enable_layerwise_casting'):
+                    logger.info("Enabling FP8 layerwise casting for transformer...")
+                    self.text_pipeline.transformer.enable_layerwise_casting(
+                        storage_dtype=torch.float8_e4m3fn,
+                        compute_dtype=torch.bfloat16
+                    )
+                else:
+                    logger.warning("Transformer doesn't support FP8 layerwise casting")
 
             # Enable CPU offload for memory management
             logger.info("Enabling model CPU offload...")
