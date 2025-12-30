@@ -30,6 +30,10 @@ MODEL_DEFAULTS = {
         "guidance_scale": 3.0,
         "steps": 50,
     },
+    "hunyuan-video-15-i2v": {
+        "guidance_scale": 6.0,
+        "steps": 50,
+    },
 }
 
 
@@ -341,10 +345,10 @@ async def generate_video(request: GenerateRequest):
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     # Validate model selection
-    if request.model not in ["hunyuan-video", "ltx-video"]:
+    if request.model not in ["hunyuan-video", "ltx-video", "hunyuan-video-15-i2v"]:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid model: {request.model}. Supported models: hunyuan-video, ltx-video"
+            detail=f"Invalid model: {request.model}. Supported models: hunyuan-video, ltx-video, hunyuan-video-15-i2v"
         )
 
     # Validate request model matches loaded model
@@ -355,11 +359,11 @@ async def generate_video(request: GenerateRequest):
                    f"Restart container with VIDEO_MODEL={request.model} to switch."
         )
 
-    # Validate image_url only allowed for LTX
-    if request.image_url and request.model != "ltx-video":
+    # Validate image_url only allowed for I2V models
+    if request.image_url and request.model not in ["ltx-video", "hunyuan-video-15-i2v"]:
         raise HTTPException(
             status_code=400,
-            detail="Image-to-video is only supported for ltx-video model"
+            detail="Image-to-video is only supported for ltx-video and hunyuan-video-15-i2v models"
         )
 
     # Apply model-specific defaults for parameters not explicitly set

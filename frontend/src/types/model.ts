@@ -41,6 +41,15 @@ export const AVAILABLE_MODELS: VideoModel[] = [
     requiresGpu: true,
     supportsImageToVideo: true,
   },
+  {
+    id: "aws:hunyuan-video-15-i2v",
+    name: "HunyuanVideo 1.5 I2V (AWS GPU)",
+    description: "Image-to-video, 480p output, 8.3B params - animate still images",
+    backend: 'aws',
+    isAwsModel: true,
+    requiresGpu: true,
+    supportsImageToVideo: true,
+  },
 
   // Replicate Models
   {

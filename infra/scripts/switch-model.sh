@@ -1,6 +1,6 @@
 #!/bin/bash
 # Switch the video generation model on the GPU instance
-# Usage: ./switch-model.sh [hunyuan-video|ltx-video]
+# Usage: ./switch-model.sh [hunyuan-video|ltx-video|hunyuan-video-15-i2v]
 #
 # This script:
 # 1. Stops the current container
@@ -15,9 +15,9 @@ set -e
 
 MODEL=${1:-hunyuan-video}
 
-if [[ "$MODEL" != "hunyuan-video" && "$MODEL" != "ltx-video" ]]; then
+if [[ "$MODEL" != "hunyuan-video" && "$MODEL" != "ltx-video" && "$MODEL" != "hunyuan-video-15-i2v" ]]; then
     echo "Invalid model: $MODEL"
-    echo "Usage: ./switch-model.sh [hunyuan-video|ltx-video]"
+    echo "Usage: ./switch-model.sh [hunyuan-video|ltx-video|hunyuan-video-15-i2v]"
     exit 1
 fi
 

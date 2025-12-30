@@ -30,7 +30,7 @@ F.scaled_dot_product_attention = _sdpa_drop_enable_gqa
 logger.info("Applied PyTorch 2.4 compatibility patch for enable_gqa")
 
 # Import will fail if diffusers < 0.36.0
-from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel, GGUFQuantizationConfig, LTXPipeline, LTXImageToVideoPipeline
+from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel, GGUFQuantizationConfig, LTXPipeline, LTXImageToVideoPipeline, HunyuanVideo15ImageToVideoPipeline
 from diffusers.utils import export_to_video
 
 
@@ -591,12 +591,171 @@ class LTXVideoGenerator(BaseVideoGenerator):
         return video_path
 
 
+class HunyuanVideo15I2VGenerator(BaseVideoGenerator):
+    """
+    HunyuanVideo-1.5 Image-to-Video (480P) generator.
+    Uses the 8.3B parameter model for high-quality image animation.
+
+    Model: hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v
+    Native resolution: 480p
+    Recommended: 50 steps, CFG 6.0
+    """
+
+    MODEL_ID = "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v"
+
+    def __init__(self):
+        super().__init__()
+        logger.info(f"Initializing HunyuanVideo15I2VGenerator")
+        logger.info(f"Model ID: {self.MODEL_ID}")
+        logger.info(f"Device: {self.device}")
+        logger.info(f"HF cache: {os.environ.get('HF_HOME', '/app/hf_cache')}")
+        self._load_model()
+
+    def _load_model(self):
+        """Load HunyuanVideo-1.5 Image-to-Video pipeline."""
+        try:
+            logger.info("Loading HunyuanVideo-1.5 I2V pipeline...")
+
+            self.pipeline = HunyuanVideo15ImageToVideoPipeline.from_pretrained(
+                self.MODEL_ID,
+                torch_dtype=torch.bfloat16,
+            )
+            logger.info("Pipeline loaded from pretrained")
+
+            # Enable CPU offload for memory management
+            logger.info("Enabling model CPU offload...")
+            self.pipeline.enable_model_cpu_offload()
+
+            # Enable VAE optimizations
+            if hasattr(self.pipeline.vae, 'enable_tiling'):
+                self.pipeline.vae.enable_tiling()
+            if hasattr(self.pipeline.vae, 'enable_slicing'):
+                self.pipeline.vae.enable_slicing()
+            logger.info("VAE memory optimizations enabled")
+
+            # Configure guidance scale via guider (HunyuanVideo 1.5 specific)
+            # Default CFG of 6.0 is set at generation time
+
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1e9
+                logger.info(f"GPU memory after load: {allocated:.2f}GB")
+
+            logger.info("HunyuanVideo-1.5 I2V pipeline loaded successfully!")
+
+        except Exception as e:
+            logger.error(f"Failed to load HunyuanVideo-1.5 I2V: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise VideoGenerationError(f"HunyuanVideo-1.5 I2V loading failed: {str(e)}")
+
+    def generate(
+        self,
+        prompt: str,
+        image: Optional[Image.Image] = None,
+        num_inference_steps: int = 50,
+        duration_seconds: int = 4,
+        fps: int = 24,  # HunyuanVideo native fps
+        guidance_scale: float = 6.0,
+        width: int = 848,  # 480p width
+        height: int = 480,  # 480p height
+        seed: Optional[int] = None
+    ) -> str:
+        """Generate video from image + prompt using HunyuanVideo-1.5 I2V."""
+        if not self.pipeline:
+            raise VideoGenerationError("Pipeline not loaded")
+
+        if image is None:
+            raise VideoGenerationError("HunyuanVideo-1.5 I2V requires an input image")
+
+        try:
+            # Pre-generation cleanup
+            if self.device == "cuda":
+                gc.collect()
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
+
+            # HunyuanVideo uses 4k+1 frame formula
+            num_frames = (duration_seconds * fps // 4) * 4 + 1
+            logger.info(f"Generating {num_frames} frames at {fps} fps ({duration_seconds}s)")
+            logger.info(f"Resolution: {width}x{height}")
+            logger.info(f"Prompt: {prompt[:100]}...")
+
+            generator = None
+            if seed is not None:
+                generator = torch.Generator(device="cpu").manual_seed(seed)
+                logger.info(f"Using seed: {seed}")
+
+            # Resize image to match output dimensions if needed
+            if image.size != (width, height):
+                logger.info(f"Resizing image from {image.size} to ({width}, {height})")
+                image = image.resize((width, height), Image.Resampling.LANCZOS)
+
+            # Configure guidance scale via guider (HunyuanVideo 1.5 specific pattern)
+            if hasattr(self.pipeline, 'guider') and hasattr(self.pipeline.guider, 'new'):
+                self.pipeline.guider = self.pipeline.guider.new(guidance_scale=guidance_scale)
+                logger.info(f"Set guidance scale to {guidance_scale} via guider")
+
+            logger.info("Running HunyuanVideo-1.5 I2V inference...")
+            output = self.pipeline(
+                prompt=prompt,
+                image=image,
+                num_frames=num_frames,
+                num_inference_steps=num_inference_steps,
+                generator=generator,
+            )
+
+            if torch.cuda.is_available():
+                peak_memory = torch.cuda.max_memory_allocated() / 1e9
+                logger.info(f"Peak GPU memory: {peak_memory:.2f}GB")
+
+            frames = output.frames[0]
+            if frames is None or len(frames) == 0:
+                raise VideoGenerationError("No frames generated")
+
+            logger.info(f"Generated {len(frames)} frames")
+
+            # Save video
+            video_path = self._save_video(frames, fps)
+
+            # Cleanup
+            del output, frames
+            if self.device == "cuda":
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+                gc.collect()
+
+            return video_path
+
+        except Exception as e:
+            logger.error(f"HunyuanVideo-1.5 I2V generation failed: {str(e)}")
+            raise VideoGenerationError(f"Generation failed: {str(e)}")
+
+    def _save_video(self, frames: List, fps: int) -> str:
+        """Save frames to MP4 video file."""
+        temp_dir = os.environ.get('TEMP_VIDEO_DIR', '/app/tmp_videos')
+        os.makedirs(temp_dir, exist_ok=True)
+
+        video_filename = f"video_{uuid.uuid4().hex}.mp4"
+        video_path = os.path.join(temp_dir, video_filename)
+
+        logger.info(f"Saving video to: {video_path}")
+        export_to_video(frames, video_path, fps=fps)
+
+        if not os.path.exists(video_path):
+            raise VideoGenerationError("Video file was not created")
+
+        file_size = os.path.getsize(video_path)
+        logger.info(f"Video saved: {file_size / 1024 / 1024:.2f} MB")
+
+        return video_path
+
+
 def create_video_generator(model_type: Optional[str] = None) -> BaseVideoGenerator:
     """
     Factory to create video generator based on VIDEO_MODEL env var.
 
     Args:
-        model_type: 'hunyuan-video' or 'ltx-video'.
+        model_type: 'hunyuan-video', 'ltx-video', or 'hunyuan-video-15-i2v'.
                    Defaults to VIDEO_MODEL env var or 'hunyuan-video'.
     """
     model_type = model_type or os.environ.get('VIDEO_MODEL', 'hunyuan-video')
@@ -607,8 +766,11 @@ def create_video_generator(model_type: Optional[str] = None) -> BaseVideoGenerat
     elif model_type == 'ltx-video':
         logger.info("Creating LTX-Video generator")
         return LTXVideoGenerator()
+    elif model_type == 'hunyuan-video-15-i2v':
+        logger.info("Creating HunyuanVideo-1.5 I2V generator")
+        return HunyuanVideo15I2VGenerator()
     else:
-        raise ValueError(f"Unknown model: {model_type}. Use: hunyuan-video, ltx-video")
+        raise ValueError(f"Unknown model: {model_type}. Use: hunyuan-video, ltx-video, hunyuan-video-15-i2v")
 
 
 # Backward compatibility alias

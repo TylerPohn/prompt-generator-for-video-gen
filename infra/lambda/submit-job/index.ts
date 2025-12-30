@@ -53,11 +53,11 @@ function validateRequest(body: any): { valid: boolean; errors?: ValidationError[
     }
   }
 
-  // Validate image_url only allowed for ltx-video
+  // Validate image_url only allowed for I2V models
   if (body.image_url !== undefined) {
     const model = body.model || 'hunyuan-video';
-    if (model !== 'ltx-video') {
-      errors.push({ field: 'image_url', message: 'image_url is only supported for ltx-video model' });
+    if (model !== 'ltx-video' && model !== 'hunyuan-video-15-i2v') {
+      errors.push({ field: 'image_url', message: 'image_url is only supported for ltx-video and hunyuan-video-15-i2v models' });
     }
     if (typeof body.image_url !== 'string' || !body.image_url.startsWith('s3://')) {
       errors.push({ field: 'image_url', message: 'image_url must be a valid S3 URL (s3://bucket/key)' });
