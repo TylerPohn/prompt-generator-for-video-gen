@@ -433,31 +433,29 @@ class LTXVideoGenerator(BaseVideoGenerator):
         try:
             logger.info("Loading LTX-Video text-to-video pipeline...")
 
-            # Load text-to-video pipeline first
+            # Load text-to-video pipeline
             self.text_pipeline = LTXPipeline.from_pretrained(
                 self.MODEL_ID,
                 torch_dtype=torch.bfloat16,
             )
             logger.info("Text-to-video pipeline loaded")
 
-            # Create image-to-video pipeline sharing weights
-            logger.info("Creating image-to-video pipeline from text pipeline...")
-            self.image_pipeline = LTXImageToVideoPipeline.from_pipe(self.text_pipeline)
-            logger.info("Image-to-video pipeline created (sharing weights)")
+            # Load image-to-video pipeline separately to avoid CPU offload hook conflicts
+            # Using from_pipe() with CPU offload causes dtype mismatches in timestep embeddings
+            logger.info("Loading image-to-video pipeline...")
+            self.image_pipeline = LTXImageToVideoPipeline.from_pretrained(
+                self.MODEL_ID,
+                torch_dtype=torch.bfloat16,
+            )
+            logger.info("Image-to-video pipeline loaded")
 
-            # Enable FP8 layerwise casting for VRAM savings
-            # Only apply to text_pipeline since image_pipeline shares the same transformer
+            # NOTE: FP8 layerwise casting is disabled for now due to dtype mismatch issues
+            # when combined with CPU offload. The timestep embeddings get passed as float32
+            # while linear layers expect bfloat16, causing "mat1 and mat2 must have same dtype" error.
             if self.use_fp8:
-                if hasattr(self.text_pipeline.transformer, 'enable_layerwise_casting'):
-                    logger.info("Enabling FP8 layerwise casting for transformer...")
-                    self.text_pipeline.transformer.enable_layerwise_casting(
-                        storage_dtype=torch.float8_e4m3fn,
-                        compute_dtype=torch.bfloat16
-                    )
-                else:
-                    logger.warning("Transformer doesn't support FP8 layerwise casting")
+                logger.warning("FP8 layerwise casting disabled due to dtype mismatch with CPU offload")
 
-            # Enable CPU offload for memory management
+            # Enable CPU offload for memory management on both pipelines
             logger.info("Enabling model CPU offload...")
             self.text_pipeline.enable_model_cpu_offload()
             self.image_pipeline.enable_model_cpu_offload()
