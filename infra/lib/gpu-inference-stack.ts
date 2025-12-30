@@ -109,6 +109,15 @@ export class GpuInferenceStack extends cdk.Stack {
       })
     );
 
+    // Auto Scaling permissions (for switch-model.sh to find the instance)
+    instanceRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['autoscaling:DescribeAutoScalingGroups'],
+        resources: ['*'],
+      })
+    );
+
     // User data to start Docker container with native inference
     const userData = ec2.UserData.forLinux();
     userData.addCommands(
