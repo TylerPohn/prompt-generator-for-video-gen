@@ -1,11 +1,15 @@
 """
-Inference logic for HunyuanVideo-1.5 video generation.
-Uses GGUF Q8 quantization for near-lossless quality with ~14GB VRAM usage.
+Inference logic for video generation.
+Supports multiple models via VIDEO_MODEL environment variable:
+- hunyuan-video: HunyuanVideo-1.5 with GGUF Q4 quantization
+- ltx-video: LTX-Video with FP8 quantization
 """
 import os
 import tempfile
 import uuid
+from abc import ABC, abstractmethod
 from typing import Optional, List
+from PIL import Image
 import gc
 
 import torch
@@ -26,7 +30,7 @@ F.scaled_dot_product_attention = _sdpa_drop_enable_gqa
 logger.info("Applied PyTorch 2.4 compatibility patch for enable_gqa")
 
 # Import will fail if diffusers < 0.36.0
-from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel, GGUFQuantizationConfig
+from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel, GGUFQuantizationConfig, LTXPipeline, LTXImageToVideoPipeline
 from diffusers.utils import export_to_video
 
 
@@ -35,7 +39,44 @@ class VideoGenerationError(Exception):
     pass
 
 
-class VideoGenerator:
+class BaseVideoGenerator(ABC):
+    """Abstract base class for video generation pipelines."""
+
+    def __init__(self):
+        self.pipeline = None
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    @abstractmethod
+    def _load_model(self):
+        """Load the model pipeline."""
+        pass
+
+    @abstractmethod
+    def generate(
+        self,
+        prompt: str,
+        num_inference_steps: int = 30,
+        duration_seconds: int = 4,
+        fps: int = 15,
+        guidance_scale: float = 6.0,
+        width: int = 1280,
+        height: int = 720,
+        seed: Optional[int] = None
+    ) -> str:
+        """Generate video from prompt. Returns path to video file."""
+        pass
+
+    def cleanup(self):
+        """Cleanup resources."""
+        if self.pipeline:
+            del self.pipeline
+            self.pipeline = None
+        if self.device == "cuda":
+            torch.cuda.empty_cache()
+        gc.collect()
+
+
+class HunyuanVideoGenerator(BaseVideoGenerator):
     """
     Wrapper class for HunyuanVideo-1.5 video generation pipeline.
     Uses GGUF Q8 quantization for near-lossless quality with ~14GB VRAM usage.
@@ -63,12 +104,11 @@ class VideoGenerator:
             gguf_path: Path to GGUF model file. If None, uses DEFAULT_GGUF_PATH
                        or GGUF_MODEL_PATH environment variable.
         """
+        super().__init__()
         self.model_id = model_id
         self.gguf_path = gguf_path or os.environ.get('GGUF_MODEL_PATH', self.DEFAULT_GGUF_PATH)
-        self.pipeline = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        logger.info(f"Initializing VideoGenerator with GGUF quantization")
+        logger.info(f"Initializing HunyuanVideoGenerator with GGUF quantization")
         logger.info(f"Model ID (for non-transformer): {model_id}")
         logger.info(f"GGUF path: {self.gguf_path}")
         logger.info(f"Device: {self.device}")
@@ -368,6 +408,213 @@ class VideoGenerator:
 
         gc.collect()
         logger.info("Cleanup complete")
+
+
+class LTXVideoGenerator(BaseVideoGenerator):
+    """
+    LTX-Video with FP8 quantization for 30-40% VRAM savings.
+    Model cached on EFS at /app/hf_cache (mounted from /mnt/efs/hf_cache).
+    """
+
+    MODEL_ID = "Lightricks/LTX-Video"
+
+    def __init__(self, use_fp8: bool = True):
+        super().__init__()
+        self.use_fp8 = use_fp8
+
+        logger.info(f"Initializing LTXVideoGenerator (FP8: {use_fp8})")
+        logger.info(f"Device: {self.device}")
+        logger.info(f"HF cache: {os.environ.get('HF_HOME', '/app/hf_cache')}")
+
+        self._load_model()
+
+    def _load_model(self):
+        """Load LTX-Video pipelines (text-to-video and image-to-video)."""
+        try:
+            logger.info("Loading LTX-Video text-to-video pipeline...")
+
+            # Load text-to-video pipeline first
+            self.text_pipeline = LTXPipeline.from_pretrained(
+                self.MODEL_ID,
+                torch_dtype=torch.bfloat16,
+            )
+            logger.info("Text-to-video pipeline loaded")
+
+            # Create image-to-video pipeline sharing weights
+            logger.info("Creating image-to-video pipeline from text pipeline...")
+            self.image_pipeline = LTXImageToVideoPipeline.from_pipe(self.text_pipeline)
+            logger.info("Image-to-video pipeline created (sharing weights)")
+
+            # Enable FP8 layerwise casting for VRAM savings on both pipelines
+            if self.use_fp8:
+                for pipeline_name, pipeline in [("text", self.text_pipeline), ("image", self.image_pipeline)]:
+                    if hasattr(pipeline.transformer, 'enable_layerwise_casting'):
+                        logger.info(f"Enabling FP8 layerwise casting for {pipeline_name} pipeline...")
+                        pipeline.transformer.enable_layerwise_casting(
+                            storage_dtype=torch.float8_e4m3fn,
+                            compute_dtype=torch.bfloat16
+                        )
+                    else:
+                        logger.warning(f"Transformer doesn't support FP8 layerwise casting ({pipeline_name})")
+
+            # Enable CPU offload for memory management
+            logger.info("Enabling model CPU offload...")
+            self.text_pipeline.enable_model_cpu_offload()
+            self.image_pipeline.enable_model_cpu_offload()
+
+            # Enable VAE optimizations on both pipelines
+            for pipeline in [self.text_pipeline, self.image_pipeline]:
+                if hasattr(pipeline.vae, 'enable_tiling'):
+                    pipeline.vae.enable_tiling()
+                if hasattr(pipeline.vae, 'enable_slicing'):
+                    pipeline.vae.enable_slicing()
+
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1e9
+                logger.info(f"GPU memory after load: {allocated:.2f}GB")
+
+            logger.info("LTX-Video pipelines loaded successfully!")
+
+        except Exception as e:
+            logger.error(f"Failed to load LTX-Video: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise VideoGenerationError(f"LTX-Video loading failed: {str(e)}")
+
+    def generate(
+        self,
+        prompt: str,
+        image: Optional[Image.Image] = None,  # Input image for image-to-video
+        num_inference_steps: int = 50,  # LTX default
+        duration_seconds: int = 4,
+        fps: int = 15,  # Match HunyuanVideo fps
+        guidance_scale: float = 3.0,  # LTX default
+        width: int = 1280,  # Match HunyuanVideo width
+        height: int = 704,  # Closest to 720 divisible by 32
+        seed: Optional[int] = None
+    ) -> str:
+        """Generate video from text prompt or image+prompt using LTX-Video."""
+        if not self.text_pipeline:
+            raise VideoGenerationError("Pipeline not loaded")
+
+        try:
+            # Pre-generation cleanup
+            if self.device == "cuda":
+                gc.collect()
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
+
+            # LTX-Video uses 8n+1 frame formula
+            num_frames = ((duration_seconds * fps) // 8) * 8 + 1
+            logger.info(f"Generating {num_frames} frames at {fps} fps ({duration_seconds}s)")
+            logger.info(f"Resolution: {width}x{height}")
+            logger.info(f"Prompt: {prompt[:100]}...")
+
+            generator = None
+            if seed is not None:
+                generator = torch.Generator(device="cpu").manual_seed(seed)
+                logger.info(f"Using seed: {seed}")
+
+            # Choose pipeline based on whether image is provided
+            if image is not None:
+                logger.info(f"Using image-to-video pipeline (image size: {image.size})")
+                # Resize image to match output dimensions if needed
+                if image.size != (width, height):
+                    logger.info(f"Resizing image from {image.size} to ({width}, {height})")
+                    image = image.resize((width, height), Image.Resampling.LANCZOS)
+
+                output = self.image_pipeline(
+                    image=image,
+                    prompt=prompt,
+                    negative_prompt="worst quality, blurry, jittery, distorted",
+                    width=width,
+                    height=height,
+                    num_frames=num_frames,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    generator=generator,
+                )
+            else:
+                logger.info("Using text-to-video pipeline")
+                output = self.text_pipeline(
+                    prompt=prompt,
+                    negative_prompt="worst quality, blurry, jittery, distorted",
+                    width=width,
+                    height=height,
+                    num_frames=num_frames,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    generator=generator,
+                )
+
+            if torch.cuda.is_available():
+                peak_memory = torch.cuda.max_memory_allocated() / 1e9
+                logger.info(f"Peak GPU memory: {peak_memory:.2f}GB")
+
+            frames = output.frames[0]
+            if frames is None or len(frames) == 0:
+                raise VideoGenerationError("No frames generated")
+
+            logger.info(f"Generated {len(frames)} frames")
+
+            # Save video
+            video_path = self._save_video(frames, fps)
+
+            # Cleanup
+            del output, frames
+            if self.device == "cuda":
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+                gc.collect()
+
+            return video_path
+
+        except Exception as e:
+            logger.error(f"LTX-Video generation failed: {str(e)}")
+            raise VideoGenerationError(f"Generation failed: {str(e)}")
+
+    def _save_video(self, frames: List, fps: int) -> str:
+        """Save frames to MP4 video file."""
+        temp_dir = os.environ.get('TEMP_VIDEO_DIR', '/app/tmp_videos')
+        os.makedirs(temp_dir, exist_ok=True)
+
+        video_filename = f"video_{uuid.uuid4().hex}.mp4"
+        video_path = os.path.join(temp_dir, video_filename)
+
+        logger.info(f"Saving video to: {video_path}")
+        export_to_video(frames, video_path, fps=fps)
+
+        if not os.path.exists(video_path):
+            raise VideoGenerationError("Video file was not created")
+
+        file_size = os.path.getsize(video_path)
+        logger.info(f"Video saved: {file_size / 1024 / 1024:.2f} MB")
+
+        return video_path
+
+
+def create_video_generator(model_type: Optional[str] = None) -> BaseVideoGenerator:
+    """
+    Factory to create video generator based on VIDEO_MODEL env var.
+
+    Args:
+        model_type: 'hunyuan-video' or 'ltx-video'.
+                   Defaults to VIDEO_MODEL env var or 'hunyuan-video'.
+    """
+    model_type = model_type or os.environ.get('VIDEO_MODEL', 'hunyuan-video')
+
+    if model_type == 'hunyuan-video':
+        logger.info("Creating HunyuanVideo generator")
+        return HunyuanVideoGenerator()
+    elif model_type == 'ltx-video':
+        logger.info("Creating LTX-Video generator")
+        return LTXVideoGenerator()
+    else:
+        raise ValueError(f"Unknown model: {model_type}. Use: hunyuan-video, ltx-video")
+
+
+# Backward compatibility alias
+VideoGenerator = HunyuanVideoGenerator
 
 
 def test_generation():

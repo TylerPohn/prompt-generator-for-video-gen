@@ -15,6 +15,7 @@ export interface VideoModel {
   // AWS-specific
   isAwsModel?: boolean;
   requiresGpu?: boolean;
+  supportsImageToVideo?: boolean;  // LTX supports image-to-video
 
   // Replicate-specific
   replicateModelId?: string; // e.g., "google/veo-3.1"
@@ -38,6 +39,7 @@ export const AVAILABLE_MODELS: VideoModel[] = [
     backend: 'aws',
     isAwsModel: true,
     requiresGpu: true,
+    supportsImageToVideo: true,
   },
 
   // Replicate Models

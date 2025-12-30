@@ -10,7 +10,8 @@ export interface SubmitJobRequest {
   seed?: number;
   steps?: number;
   duration?: number;
-  model?: string;  // NEW: "hunyuan-video" or "ltx-video"
+  model?: string;  // "hunyuan-video" or "ltx-video"
+  image_url?: string;  // S3 URL for LTX image-to-video
 }
 
 export interface SubmitJobResponse {
@@ -88,6 +89,21 @@ export class AwsVideoClient {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Failed to get job status: ${response.status} - ${error}`);
+    }
+
+    return response.json();
+  }
+
+  async getUploadUrl(contentType: string): Promise<{ uploadUrl: string; s3Url: string }> {
+    const response = await fetch(`${this.endpoint}/upload-url`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ contentType }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to get upload URL: ${response.status} - ${error}`);
     }
 
     return response.json();

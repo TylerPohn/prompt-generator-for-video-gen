@@ -10,6 +10,7 @@ interface GenerateOptions {
   prompt: string;
   model: string;
   duration: number;
+  imageUrl?: string;  // S3 URL for LTX image-to-video
   onCardCreate?: (card: VideoCard) => void;
   onCardUpdate: (id: string, updates: Partial<VideoCard>) => void;
   cardId?: string; // Optional - for retries
@@ -25,8 +26,9 @@ export function useVideoGeneration() {
     id: string,
     prompt: string,
     duration: number,
-    awsModelName: string,  // NEW: "hunyuan-video" or "ltx-video"
-    onCardUpdate: (id: string, updates: Partial<VideoCard>) => void
+    awsModelName: string,  // "hunyuan-video" or "ltx-video"
+    onCardUpdate: (id: string, updates: Partial<VideoCard>) => void,
+    imageUrl?: string  // S3 URL for LTX image-to-video
   ) => {
     const awsClient = getAwsVideoClient();
 
@@ -34,7 +36,8 @@ export function useVideoGeneration() {
     const submitResponse = await awsClient.submitJob({
       prompt,
       duration,
-      model: awsModelName,  // NEW: pass model to AWS API
+      model: awsModelName,
+      image_url: imageUrl,  // Pass image URL for LTX image-to-video
     });
 
     console.log(`AWS job submitted: ${submitResponse.jobId} (model: ${awsModelName})`);
@@ -92,6 +95,7 @@ export function useVideoGeneration() {
     prompt,
     model,  // NOW full model ID: "aws:hunyuan-video" or "replicate:google/veo-3.1"
     duration,
+    imageUrl,
     onCardCreate,
     onCardUpdate,
     cardId,
@@ -148,13 +152,14 @@ export function useVideoGeneration() {
 
       // Route based on parsed model info
       if (routeInfo.backend === 'aws') {
-        console.log(`🌩️ Using AWS backend: ${routeInfo.awsModelName}`);
+        console.log(`🌩️ Using AWS backend: ${routeInfo.awsModelName}${imageUrl ? ' (with image)' : ''}`);
         videoUrl = await generateWithAws(
           id,
           prompt,
           duration,
           routeInfo.awsModelName!,
-          onCardUpdate
+          onCardUpdate,
+          imageUrl
         );
       } else {
         console.log(`🔧 Using Replicate backend: ${routeInfo.replicateModelId}`);

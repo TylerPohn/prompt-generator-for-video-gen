@@ -53,6 +53,17 @@ function validateRequest(body: any): { valid: boolean; errors?: ValidationError[
     }
   }
 
+  // Validate image_url only allowed for ltx-video
+  if (body.image_url !== undefined) {
+    const model = body.model || 'hunyuan-video';
+    if (model !== 'ltx-video') {
+      errors.push({ field: 'image_url', message: 'image_url is only supported for ltx-video model' });
+    }
+    if (typeof body.image_url !== 'string' || !body.image_url.startsWith('s3://')) {
+      errors.push({ field: 'image_url', message: 'image_url must be a valid S3 URL (s3://bucket/key)' });
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors: errors.length > 0 ? errors : undefined,
@@ -112,10 +123,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const job: VideoJob = {
       jobId,
       prompt: requestBody.prompt.trim(),
-      model,  // NEW: store model in job record
+      model,
       seed: requestBody.seed,
       steps: requestBody.steps,
       duration: requestBody.duration,
+      image_url: requestBody.image_url,
       status: 'pending',
       createdAt: now,
       updatedAt: nowIso,
@@ -135,10 +147,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const sqsMessage: SQSJobMessage = {
       jobId,
       prompt: job.prompt,
-      model,  // NEW: include model in SQS message
+      model,
       seed: job.seed,
       steps: job.steps,
       duration: job.duration,
+      image_url: job.image_url,
     };
 
     await sqsClient.send(

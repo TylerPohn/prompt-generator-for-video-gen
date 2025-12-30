@@ -1,8 +1,11 @@
-import { type FormEvent, useMemo } from 'react';
+import { type FormEvent, useMemo, useState } from 'react';
 import { getAvailableModels } from '../services/modelRouter';
 import type { VideoCard } from '../types';
 import { useVideoGeneration } from '../hooks/useVideoGeneration';
 import { useLastModel } from '../hooks/useLastModel';
+import { ImageUploader } from './ImageUploader';
+import { uploadImageToS3 } from '../utils/imageUpload';
+import { AVAILABLE_MODELS } from '../types/model';
 
 interface PromptInputPanelProps {
   prompt: string;
@@ -16,6 +19,15 @@ interface PromptInputPanelProps {
 export function PromptInputPanel({ prompt, onPromptChange, duration, onDurationChange, onCardCreate, onCardUpdate }: PromptInputPanelProps) {
   const { lastModel, setLastModel } = useLastModel();
   const { generate, isGenerating } = useVideoGeneration();
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Check if selected model supports image-to-video
+  const selectedModel = useMemo(() => {
+    return AVAILABLE_MODELS.find(m => m.id === lastModel);
+  }, [lastModel]);
+
+  const supportsImageToVideo = selectedModel?.supportsImageToVideo ?? false;
 
   // Group models by backend
   const { awsModels, replicateModels, availableModels } = useMemo(() => {
@@ -35,17 +47,37 @@ export function PromptInputPanel({ prompt, onPromptChange, duration, onDurationC
 
     if (!prompt.trim()) return;
 
+    let imageUrl: string | undefined;
+
+    // Upload image if selected (LTX only)
+    if (selectedImage && supportsImageToVideo) {
+      try {
+        setIsUploading(true);
+        const result = await uploadImageToS3(selectedImage);
+        imageUrl = result.s3Url;
+      } catch (error) {
+        console.error('Failed to upload image:', error);
+        alert('Failed to upload image. Please try again.');
+        setIsUploading(false);
+        return;
+      } finally {
+        setIsUploading(false);
+      }
+    }
+
     // Start generation
     await generate({
       prompt: prompt.trim(),
       model: lastModel,
       duration,
+      imageUrl,
       onCardCreate,
       onCardUpdate,
     });
 
-    // Optionally clear prompt after submission
+    // Clear prompt and image after submission
     onPromptChange('');
+    setSelectedImage(null);
   };
 
   return (
@@ -135,12 +167,21 @@ export function PromptInputPanel({ prompt, onPromptChange, duration, onDurationC
           )}
         </div>
 
+        {/* Image upload - only for models that support image-to-video */}
+        {supportsImageToVideo && (
+          <ImageUploader
+            onImageSelect={setSelectedImage}
+            selectedFile={selectedImage}
+            disabled={isGenerating || isUploading}
+          />
+        )}
+
         <button
           type="submit"
-          disabled={!prompt.trim() || isGenerating}
+          disabled={!prompt.trim() || isGenerating || isUploading}
           className="w-full px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
         >
-          {isGenerating ? 'Generating...' : 'Generate Video'}
+          {isUploading ? 'Uploading Image...' : isGenerating ? 'Generating...' : 'Generate Video'}
         </button>
       </form>
     </div>

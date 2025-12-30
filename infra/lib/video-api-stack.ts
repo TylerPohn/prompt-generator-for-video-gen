@@ -114,6 +114,24 @@ export class VideoApiStack extends cdk.Stack {
     // Grant S3 access for presigned URLs
     videoBucket.grantRead(getStatusLambda);
 
+    // Lambda: Get Upload URL (generates presigned S3 URLs for image uploads)
+    const getUploadUrlLambda = new NodejsFunction(this, 'GetUploadUrlFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      entry: path.join(__dirname, '../lambda/get-upload-url/index.ts'),
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(10),
+      environment: {
+        BUCKET_NAME: videoBucketName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+      },
+    });
+
+    // Grant S3 put access for presigned upload URLs
+    videoBucket.grantPut(getUploadUrlLambda);
+
     // SSM Parameter to store GPU endpoint (updated by start-gpu.sh script)
     const gpuEndpointParam = new ssm.StringParameter(this, 'GpuEndpointParam', {
       parameterName: '/video-generation/gpu-endpoint',
@@ -137,6 +155,7 @@ export class VideoApiStack extends cdk.Stack {
       handler: 'handler',
       timeout: cdk.Duration.minutes(15), // 15 minutes max (AWS Lambda limit) for polling
       memorySize: 512,
+      reservedConcurrentExecutions: 1, // Limit to 1 concurrent execution to prevent CUDA OOM
       vpc: props.gpuInferenceStack.vpc,
       securityGroups: [processJobSecurityGroup],
       allowPublicSubnet: true, // Allow Lambda in public subnets (default VPC only has public)
@@ -162,7 +181,8 @@ export class VideoApiStack extends cdk.Stack {
     processJobLambda.addEventSource(
       new SqsEventSource(this.jobQueue, {
         batchSize: 1, // Process one video at a time
-        maxConcurrency: 2, // Limit concurrent executions
+        // Note: maxConcurrency removed - using reservedConcurrentExecutions instead
+        // to limit Lambda to 1 concurrent execution and prevent CUDA OOM
       })
     );
 
@@ -263,6 +283,14 @@ export class VideoApiStack extends cdk.Stack {
       requestParameters: {
         'method.request.path.jobId': true,
       },
+    });
+
+    // POST /upload-url endpoint (for image upload presigned URLs)
+    const uploadUrlResource = this.api.root.addResource('upload-url');
+    const uploadUrlIntegration = new apigateway.LambdaIntegration(getUploadUrlLambda);
+
+    uploadUrlResource.addMethod('POST', uploadUrlIntegration, {
+      apiKeyRequired: false, // Set to true to require API key
     });
 
     // Outputs

@@ -5,6 +5,7 @@ Production-ready with error handling, logging, and S3 integration.
 import os
 import asyncio
 import traceback
+import secrets
 from contextlib import asynccontextmanager
 from typing import Optional
 from datetime import datetime
@@ -15,8 +16,21 @@ from pydantic import BaseModel, Field
 from loguru import logger
 import torch
 
-from app.inference import VideoGenerator, VideoGenerationError
+from app.inference import create_video_generator, VideoGenerationError, BaseVideoGenerator
 from app.utils import upload_to_s3, cleanup_temp_file
+
+
+# Model-specific default parameters
+MODEL_DEFAULTS = {
+    "hunyuan-video": {
+        "guidance_scale": 6.0,
+        "steps": 30,
+    },
+    "ltx-video": {
+        "guidance_scale": 3.0,
+        "steps": 50,
+    },
+}
 
 
 # Configure logging
@@ -29,7 +43,8 @@ logger.add(
 )
 
 # Global model instance
-video_generator: Optional[VideoGenerator] = None
+video_generator: Optional[BaseVideoGenerator] = None
+loaded_model_type: Optional[str] = None
 
 # In-memory job status tracking
 # Format: {job_id: {status, video_key, error, started_at, completed_at, generation_time_seconds}}
@@ -39,7 +54,7 @@ job_statuses: dict = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for FastAPI app - loads model on startup."""
-    global video_generator
+    global video_generator, loaded_model_type
 
     logger.info("Starting FastAPI application...")
     logger.info(f"CUDA available: {torch.cuda.is_available()}")
@@ -53,9 +68,10 @@ async def lifespan(app: FastAPI):
         skip_model = os.environ.get('SKIP_MODEL_LOAD', 'false').lower() == 'true'
 
         if torch.cuda.is_available() and not skip_model:
-            logger.info("Loading HunyuanVideo-1.5 model...")
-            video_generator = VideoGenerator()
-            logger.info("Model loaded successfully!")
+            loaded_model_type = os.environ.get('VIDEO_MODEL', 'hunyuan-video')
+            logger.info(f"Loading model: {loaded_model_type}")
+            video_generator = create_video_generator(loaded_model_type)
+            logger.info(f"Model {loaded_model_type} loaded successfully!")
         elif skip_model:
             logger.warning("Skipping model load (SKIP_MODEL_LOAD=true)")
         else:
@@ -91,14 +107,18 @@ class GenerateRequest(BaseModel):
     job_id: str = Field(..., description="Unique job identifier")
     bucket_name: str = Field(..., description="S3 bucket name for output video")
 
-    # Optional parameters - updated defaults for HunyuanVideo
+    # Optional parameters
+    # Note: height=704 is divisible by 32 (required by LTX-Video) and close to 720p
     seed: Optional[int] = Field(default=None, description="Random seed for reproducibility")
-    steps: Optional[int] = Field(default=30, ge=1, le=100, description="Number of inference steps")
+    steps: Optional[int] = Field(default=None, ge=1, le=100, description="Number of inference steps (default: model-specific)")
     duration: Optional[int] = Field(default=4, ge=1, le=10, description="Video duration in seconds")
     fps: Optional[int] = Field(default=15, ge=4, le=30, description="Frames per second")
-    guidance_scale: Optional[float] = Field(default=6.0, ge=1.0, le=20.0, description="Guidance scale")
+    guidance_scale: Optional[float] = Field(default=None, ge=1.0, le=20.0, description="Guidance scale (default: model-specific)")
     width: Optional[int] = Field(default=1280, ge=256, le=1920, description="Video width")
-    height: Optional[int] = Field(default=720, ge=256, le=1080, description="Video height")
+    height: Optional[int] = Field(default=704, ge=256, le=1080, description="Video height (704 for LTX compatibility)")
+
+    # Image-to-video (LTX only)
+    image_url: Optional[str] = Field(default=None, description="S3 URL of input image for LTX image-to-video")
 
 
 class GenerateResponse(BaseModel):
@@ -131,6 +151,7 @@ class HealthResponse(BaseModel):
     """Response model for health check."""
     status: str
     model_loaded: bool
+    loaded_model: Optional[str] = None
     cuda_available: bool
     gpu_name: Optional[str] = None
     gpu_memory: Optional[GpuMemory] = None
@@ -184,6 +205,7 @@ async def health_check():
     return HealthResponse(
         status="healthy" if model_loaded else "model_not_loaded",
         model_loaded=model_loaded,
+        loaded_model=loaded_model_type,
         cuda_available=cuda_available,
         gpu_name=gpu_name,
         gpu_memory=gpu_memory,
@@ -192,10 +214,15 @@ async def health_check():
     )
 
 
-async def generate_video_background(request: GenerateRequest):
+async def generate_video_background(request: GenerateRequest, effective_steps: int, effective_guidance: float):
     """
     Background task to generate video and update job status.
     This runs asynchronously while the /generate endpoint returns immediately.
+
+    Args:
+        request: The generation request
+        effective_steps: Model-specific steps value (from request or model defaults)
+        effective_guidance: Model-specific guidance_scale value (from request or model defaults)
     """
     job_id = request.job_id
     start_time = datetime.utcnow()
@@ -212,14 +239,27 @@ async def generate_video_background(request: GenerateRequest):
 
         logger.info(f"[{job_id}] Starting background video generation...")
 
+        # Download input image if provided (LTX image-to-video)
+        input_image = None
+        if request.image_url:
+            try:
+                from app.utils import download_image_from_s3
+                logger.info(f"[{job_id}] Downloading input image from {request.image_url}")
+                input_image = await asyncio.to_thread(download_image_from_s3, request.image_url)
+                logger.info(f"[{job_id}] Input image loaded: {input_image.size}")
+            except Exception as e:
+                logger.error(f"[{job_id}] Failed to download input image: {e}")
+                raise VideoGenerationError(f"Failed to download input image: {str(e)}")
+
         # Generate video
         temp_video_path = await asyncio.to_thread(
             video_generator.generate,
             prompt=request.prompt,
-            num_inference_steps=request.steps,
+            image=input_image,
+            num_inference_steps=effective_steps,
             duration_seconds=request.duration,
             fps=request.fps,
-            guidance_scale=request.guidance_scale,
+            guidance_scale=effective_guidance,
             width=request.width,
             height=request.height,
             seed=request.seed
@@ -232,7 +272,8 @@ async def generate_video_background(request: GenerateRequest):
 
         # Upload to S3
         logger.info(f"[{job_id}] Uploading to S3 bucket: {request.bucket_name}")
-        video_key = f"generated-videos/{job_id}.mp4"
+        suffix = secrets.token_hex(2)  # 4 random hex chars
+        video_key = f"generated-videos/{job_id}_{suffix}.mp4"
 
         s3_url = await asyncio.to_thread(
             upload_to_s3,
@@ -306,16 +347,30 @@ async def generate_video(request: GenerateRequest):
             detail=f"Invalid model: {request.model}. Supported models: hunyuan-video, ltx-video"
         )
 
-    if request.model == "ltx-video":
+    # Validate request model matches loaded model
+    if request.model != loaded_model_type:
         raise HTTPException(
-            status_code=501,
-            detail="LTX-Video support not yet implemented. Currently only hunyuan-video is available."
+            status_code=400,
+            detail=f"Requested model '{request.model}' but container loaded '{loaded_model_type}'. "
+                   f"Restart container with VIDEO_MODEL={request.model} to switch."
         )
+
+    # Validate image_url only allowed for LTX
+    if request.image_url and request.model != "ltx-video":
+        raise HTTPException(
+            status_code=400,
+            detail="Image-to-video is only supported for ltx-video model"
+        )
+
+    # Apply model-specific defaults for parameters not explicitly set
+    model_defaults = MODEL_DEFAULTS.get(request.model, {})
+    effective_steps = request.steps if request.steps is not None else model_defaults.get("steps", 30)
+    effective_guidance = request.guidance_scale if request.guidance_scale is not None else model_defaults.get("guidance_scale", 6.0)
 
     logger.info(f"Accepting job_id: {request.job_id}")
     logger.info(f"Model: {request.model}")
     logger.info(f"Prompt: {request.prompt}")
-    logger.info(f"Parameters - steps: {request.steps}, duration: {request.duration}s, fps: {request.fps}")
+    logger.info(f"Parameters - steps: {effective_steps}, guidance: {effective_guidance}, duration: {request.duration}s, fps: {request.fps}")
 
     # Initialize job status
     job_statuses[request.job_id] = {
@@ -326,7 +381,7 @@ async def generate_video(request: GenerateRequest):
     }
 
     # Start generation in background
-    asyncio.create_task(generate_video_background(request))
+    asyncio.create_task(generate_video_background(request, effective_steps, effective_guidance))
 
     return GenerateResponse(
         status="accepted",

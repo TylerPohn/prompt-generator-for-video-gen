@@ -3,13 +3,14 @@ export interface VideoJobRequest {
   seed?: number;
   steps?: number;
   duration?: number;
-  model?: string;  // NEW: "hunyuan-video" or "ltx-video"
+  model?: string;  // "hunyuan-video" or "ltx-video"
+  image_url?: string;  // S3 URL for LTX image-to-video
 }
 
 export interface VideoJob {
   jobId: string;
   prompt: string;
-  model: string;     // NEW: model name ("hunyuan-video" or "ltx-video")
+  model: string;     // Model name ("hunyuan-video" or "ltx-video")
   seed?: number;
   steps?: number;
   duration?: number;
@@ -18,6 +19,7 @@ export interface VideoJob {
   updatedAt: string;  // ISO string for human readability
   videoUrl?: string;
   error?: string;
+  image_url?: string;  // S3 URL for LTX image-to-video
 }
 
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -39,18 +41,20 @@ export interface GetStatusResponse {
 export interface SQSJobMessage {
   jobId: string;
   prompt: string;
-  model: string;     // NEW: model name
+  model: string;     // Model name
   seed?: number;
   steps?: number;
   duration?: number;
+  image_url?: string;  // S3 URL for LTX image-to-video
 }
 
 export interface FastAPIRequest {
   prompt: string;
-  model: string;     // NEW: model name
+  model: string;     // Model name
   seed?: number;
   steps?: number;
   duration?: number;
+  image_url?: string;  // S3 URL for LTX image-to-video
 }
 
 export interface FastAPIResponse {

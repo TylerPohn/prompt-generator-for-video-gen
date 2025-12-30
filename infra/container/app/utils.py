@@ -137,3 +137,60 @@ def validate_s3_bucket(bucket_name: str) -> bool:
     except Exception as e:
         logger.error(f"S3 bucket validation error: {str(e)}")
         return False
+
+
+def download_image_from_s3(s3_url: str):
+    """
+    Download and load an image from S3.
+
+    Args:
+        s3_url: S3 URL in format s3://bucket/key or https://bucket.s3.region.amazonaws.com/key
+
+    Returns:
+        PIL Image object
+
+    Raises:
+        ValueError: If URL format is invalid
+        Exception: If download fails
+    """
+    from PIL import Image
+    import io
+    import re
+
+    logger.info(f"Downloading image from S3: {s3_url}")
+
+    # Parse S3 URL
+    if s3_url.startswith('s3://'):
+        # Format: s3://bucket/key
+        match = re.match(r's3://([^/]+)/(.+)', s3_url)
+        if not match:
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+        bucket = match.group(1)
+        key = match.group(2)
+    elif 's3.amazonaws.com' in s3_url or 's3.' in s3_url:
+        # Format: https://bucket.s3.region.amazonaws.com/key
+        match = re.match(r'https?://([^.]+)\.s3[^/]*\.amazonaws\.com/(.+)', s3_url)
+        if not match:
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+        bucket = match.group(1)
+        key = match.group(2)
+    else:
+        raise ValueError(f"URL is not a valid S3 URL: {s3_url}")
+
+    logger.info(f"Parsed S3 URL - bucket: {bucket}, key: {key}")
+
+    # Download from S3
+    s3_client = boto3.client('s3')
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    image_data = response['Body'].read()
+
+    # Load as PIL Image
+    image = Image.open(io.BytesIO(image_data))
+
+    # Convert to RGB if necessary (handles RGBA, P mode, etc.)
+    if image.mode != 'RGB':
+        logger.info(f"Converting image from {image.mode} to RGB")
+        image = image.convert('RGB')
+
+    logger.info(f"Image loaded successfully: {image.size}, mode: {image.mode}")
+    return image

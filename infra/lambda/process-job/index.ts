@@ -37,14 +37,15 @@ async function getGpuEndpoint(): Promise<string> {
 
 interface FastAPIGenerateRequest {
   prompt: string;
-  model: string;       // NEW: model name
+  model: string;
   job_id: string;
   bucket_name: string;
   seed?: number;
   steps?: number;
   duration?: number;
-  width?: number;      // Video width
-  height?: number;     // Video height
+  width?: number;
+  height?: number;
+  image_url?: string;  // S3 URL for LTX image-to-video
 }
 
 interface FastAPIGenerateResponse {
@@ -113,7 +114,8 @@ async function generateVideoWithGpu(
   model: string,
   seed?: number,
   steps?: number,
-  duration?: number
+  duration?: number,
+  imageUrl?: string
 ): Promise<string> {
   const gpuEndpoint = await getGpuEndpoint();
 
@@ -127,6 +129,7 @@ async function generateVideoWithGpu(
     duration: duration || 3,
     width: 288,
     height: 512,
+    image_url: imageUrl,
   };
 
   console.log(`Calling GPU endpoint: ${gpuEndpoint}/generate with model: ${model}`);
@@ -210,15 +213,18 @@ async function processRecord(record: SQSRecord): Promise<void> {
     // Parse SQS message
     const message: SQSJobMessage = JSON.parse(record.body);
     jobId = message.jobId;
-    const { prompt, model, seed, steps, duration } = message;
+    const { prompt, model, seed, steps, duration, image_url } = message;
 
     console.log(`Processing job ${jobId} with model: ${model}, prompt: ${prompt.substring(0, 100)}...`);
+    if (image_url) {
+      console.log(`Using input image: ${image_url}`);
+    }
 
     // Update status to processing
     await updateJobStatus(jobId, 'processing');
 
     // Generate video using GPU
-    const videoKey = await generateVideoWithGpu(jobId, prompt, model, seed, steps, duration);
+    const videoKey = await generateVideoWithGpu(jobId, prompt, model, seed, steps, duration, image_url);
 
     // Update status to completed with video key
     await updateJobStatus(jobId, 'completed', videoKey);
