@@ -12,7 +12,7 @@ const TABLE_NAME = process.env.JOBS_TABLE_NAME!;
 const BUCKET_NAME = process.env.BUCKET_NAME!;
 const GPU_ENDPOINT_PARAM = process.env.GPU_ENDPOINT_PARAM!;
 
-// Cache the GPU endpoint to avoid repeated SSM calls
+// Cache the GPU endpoint to avoid repeated SSM calls (cache cleared on Lambda cold start)
 let cachedGpuEndpoint: string | null = null;
 
 async function getGpuEndpoint(): Promise<string> {

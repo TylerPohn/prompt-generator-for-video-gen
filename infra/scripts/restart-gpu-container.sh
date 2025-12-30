@@ -3,7 +3,7 @@
 
 set -e
 
-INSTANCE_ID="i-0133b5bc58d425d6e"
+INSTANCE_ID="i-0d37b84d08727a481"
 
 echo "Restarting GPU container on $INSTANCE_ID..."
 

@@ -199,7 +199,7 @@ export class GpuInferenceStack extends cdk.Stack {
 
     // Launch Template
     const launchTemplate = new ec2.LaunchTemplate(this, 'GpuLaunchTemplate', {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.G5, ec2.InstanceSize.XLARGE48),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.G5, ec2.InstanceSize.XLARGE16),
       machineImage: ami,
       securityGroup: this.securityGroup,
       role: instanceRole,
