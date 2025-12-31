@@ -286,7 +286,13 @@ def test_generation(pipeline, output_dir: str = "/tmp") -> bool:
 
         # Save first frame as proof
         output_path = os.path.join(output_dir, "i2v_quant_test_frame.png")
-        frames[0].save(output_path)
+        # Handle both PIL Image and numpy array outputs
+        first_frame = frames[0]
+        if isinstance(first_frame, Image.Image):
+            first_frame.save(output_path)
+        else:
+            # Convert numpy array to PIL Image
+            Image.fromarray(first_frame).save(output_path)
         print(f"✓ First frame saved to: {output_path}")
 
         # Cleanup
