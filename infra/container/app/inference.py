@@ -31,6 +31,7 @@ logger.info("Applied PyTorch 2.4 compatibility patch for enable_gqa")
 
 # Import will fail if diffusers < 0.36.0
 from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel, GGUFQuantizationConfig, LTXPipeline, LTXImageToVideoPipeline, HunyuanVideo15ImageToVideoPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
 
 
@@ -599,30 +600,66 @@ class HunyuanVideo15I2VGenerator(BaseVideoGenerator):
     Model: hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v
     Native resolution: 480p
     Recommended: 50 steps, CFG 6.0
+
+    Supports bitsandbytes 4-bit quantization for reduced VRAM usage (~14GB vs ~33GB).
     """
 
     MODEL_ID = "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v"
 
-    def __init__(self):
+    def __init__(self, use_quantization: bool = True):
+        """
+        Initialize HunyuanVideo-1.5 I2V generator.
+
+        Args:
+            use_quantization: If True, use bitsandbytes 4-bit NF4 quantization
+                            for the transformer to reduce VRAM from ~33GB to ~14GB.
+                            Default: True
+        """
         super().__init__()
+        self.use_quantization = use_quantization
         logger.info(f"Initializing HunyuanVideo15I2VGenerator")
+        logger.info(f"Quantization enabled: {self.use_quantization}")
         logger.info(f"Model ID: {self.MODEL_ID}")
         logger.info(f"Device: {self.device}")
         logger.info(f"HF cache: {os.environ.get('HF_HOME', '/app/hf_cache')}")
         self._load_model()
 
     def _load_model(self):
-        """Load HunyuanVideo-1.5 Image-to-Video pipeline."""
+        """Load HunyuanVideo-1.5 Image-to-Video pipeline with optional quantization."""
         try:
-            logger.info("Loading HunyuanVideo-1.5 I2V pipeline...")
+            if self.use_quantization:
+                logger.info("Loading HunyuanVideo-1.5 I2V with bitsandbytes 4-bit quantization...")
 
-            self.pipeline = HunyuanVideo15ImageToVideoPipeline.from_pretrained(
-                self.MODEL_ID,
-                torch_dtype=torch.bfloat16,
-            )
-            logger.info("Pipeline loaded from pretrained")
+                # Configure bitsandbytes 4-bit NF4 quantization for the transformer
+                # This reduces VRAM usage from ~33GB to ~14GB with minimal quality loss
+                pipeline_quant_config = PipelineQuantizationConfig(
+                    quant_backend="bitsandbytes_4bit",
+                    quant_kwargs={
+                        "load_in_4bit": True,
+                        "bnb_4bit_quant_type": "nf4",
+                        "bnb_4bit_compute_dtype": torch.bfloat16
+                    },
+                    components_to_quantize=["transformer"]
+                )
 
-            # Enable CPU offload for memory management
+                self.pipeline = HunyuanVideo15ImageToVideoPipeline.from_pretrained(
+                    self.MODEL_ID,
+                    quantization_config=pipeline_quant_config,
+                    torch_dtype=torch.bfloat16,
+                )
+                logger.info("Pipeline loaded with 4-bit quantization")
+            else:
+                logger.info("Loading HunyuanVideo-1.5 I2V without quantization (full BF16)...")
+
+                self.pipeline = HunyuanVideo15ImageToVideoPipeline.from_pretrained(
+                    self.MODEL_ID,
+                    torch_dtype=torch.bfloat16,
+                )
+                logger.info("Pipeline loaded from pretrained")
+
+            # IMPORTANT: Use enable_model_cpu_offload, NOT enable_sequential_cpu_offload
+            # There's a known bug with sequential offload + bitsandbytes int4:
+            # https://github.com/huggingface/diffusers/issues/10800
             logger.info("Enabling model CPU offload...")
             self.pipeline.enable_model_cpu_offload()
 
@@ -638,9 +675,11 @@ class HunyuanVideo15I2VGenerator(BaseVideoGenerator):
 
             if torch.cuda.is_available():
                 allocated = torch.cuda.memory_allocated() / 1e9
-                logger.info(f"GPU memory after load: {allocated:.2f}GB")
+                reserved = torch.cuda.memory_reserved() / 1e9
+                logger.info(f"GPU memory after load - Allocated: {allocated:.2f}GB, Reserved: {reserved:.2f}GB")
 
-            logger.info("HunyuanVideo-1.5 I2V pipeline loaded successfully!")
+            quant_status = "with 4-bit quantization" if self.use_quantization else "without quantization"
+            logger.info(f"HunyuanVideo-1.5 I2V pipeline loaded successfully {quant_status}!")
 
         except Exception as e:
             logger.error(f"Failed to load HunyuanVideo-1.5 I2V: {str(e)}")
@@ -750,15 +789,22 @@ class HunyuanVideo15I2VGenerator(BaseVideoGenerator):
         return video_path
 
 
-def create_video_generator(model_type: Optional[str] = None) -> BaseVideoGenerator:
+def create_video_generator(model_type: Optional[str] = None, use_quantization: Optional[bool] = None) -> BaseVideoGenerator:
     """
     Factory to create video generator based on VIDEO_MODEL env var.
 
     Args:
         model_type: 'hunyuan-video', 'ltx-video', or 'hunyuan-video-15-i2v'.
                    Defaults to VIDEO_MODEL env var or 'hunyuan-video'.
+        use_quantization: Whether to use quantization for models that support it.
+                         Defaults to I2V_USE_QUANTIZATION env var or True.
+                         Currently only affects hunyuan-video-15-i2v.
     """
     model_type = model_type or os.environ.get('VIDEO_MODEL', 'hunyuan-video')
+
+    # Determine quantization setting from env var if not explicitly provided
+    if use_quantization is None:
+        use_quantization = os.environ.get('I2V_USE_QUANTIZATION', 'true').lower() == 'true'
 
     if model_type == 'hunyuan-video':
         logger.info("Creating HunyuanVideo generator")
@@ -767,8 +813,8 @@ def create_video_generator(model_type: Optional[str] = None) -> BaseVideoGenerat
         logger.info("Creating LTX-Video generator")
         return LTXVideoGenerator()
     elif model_type == 'hunyuan-video-15-i2v':
-        logger.info("Creating HunyuanVideo-1.5 I2V generator")
-        return HunyuanVideo15I2VGenerator()
+        logger.info(f"Creating HunyuanVideo-1.5 I2V generator (quantization: {use_quantization})")
+        return HunyuanVideo15I2VGenerator(use_quantization=use_quantization)
     else:
         raise ValueError(f"Unknown model: {model_type}. Use: hunyuan-video, ltx-video, hunyuan-video-15-i2v")
 
