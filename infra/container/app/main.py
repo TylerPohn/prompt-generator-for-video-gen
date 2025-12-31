@@ -392,8 +392,8 @@ async def auto_gen_loop():
                 "duration_seconds": AUTO_GEN_DURATION,
                 "fps": 15,
                 "guidance_scale": effective_guidance,
-                "width": 512,
-                "height": 288,
+                "width": 288,
+                "height": 512,
                 "seed": None,
             }
 
