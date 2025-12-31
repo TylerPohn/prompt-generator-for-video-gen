@@ -8,8 +8,10 @@ pydantic-settings==2.1.0
 # PyTorch wheels come from PyTorch's cu121 index (installed separately in Dockerfile)
 
 # Diffusion models - Updated for HunyuanVideo-1.5
+# Pin transformers to 4.47.1 to fix HunyuanVideo I2V compatibility
+# See: https://github.com/huggingface/diffusers/issues/11118
 diffusers>=0.36.0
-transformers>=4.44.0
+transformers==4.47.1
 accelerate>=0.33.0
 safetensors>=0.4.2
 huggingface-hub>=0.25.0

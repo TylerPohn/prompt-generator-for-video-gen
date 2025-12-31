@@ -66,10 +66,12 @@ RUN python -m pip install --upgrade pip setuptools wheel
 WORKDIR /app
 
 # Install PyTorch with CUDA 12.1 support
+# Using PyTorch 2.5.1+ to fix NaN values in HunyuanVideo output
+# See: https://github.com/huggingface/diffusers/issues/10314
 RUN pip install --no-cache-dir \
-    torch==2.4.0 \
-    torchvision==0.19.0 \
-    torchaudio==2.4.0 \
+    torch==2.5.1 \
+    torchvision==0.20.1 \
+    torchaudio==2.5.1 \
     --extra-index-url https://download.pytorch.org/whl/cu121
 
 # Copy pre-built bitsandbytes from builder
