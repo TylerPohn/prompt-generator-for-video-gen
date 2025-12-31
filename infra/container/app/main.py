@@ -255,18 +255,24 @@ async def generate_video_background(request: GenerateRequest, effective_steps: i
                 logger.error(f"[{job_id}] Failed to download input image: {e}")
                 raise VideoGenerationError(f"Failed to download input image: {str(e)}")
 
-        # Generate video
+        # Generate video - only pass image parameter if model supports it
+        generate_kwargs = {
+            "prompt": request.prompt,
+            "num_inference_steps": effective_steps,
+            "duration_seconds": request.duration,
+            "fps": request.fps,
+            "guidance_scale": effective_guidance,
+            "width": request.width,
+            "height": request.height,
+            "seed": request.seed,
+        }
+        # Only add image parameter for I2V models that support it
+        if input_image is not None:
+            generate_kwargs["image"] = input_image
+
         temp_video_path = await asyncio.to_thread(
             video_generator.generate,
-            prompt=request.prompt,
-            image=input_image,
-            num_inference_steps=effective_steps,
-            duration_seconds=request.duration,
-            fps=request.fps,
-            guidance_scale=effective_guidance,
-            width=request.width,
-            height=request.height,
-            seed=request.seed
+            **generate_kwargs
         )
 
         if not temp_video_path or not os.path.exists(temp_video_path):
@@ -365,6 +371,20 @@ async def generate_video(request: GenerateRequest):
             status_code=400,
             detail="Image-to-video is only supported for ltx-video and hunyuan-video-15-i2v models"
         )
+
+    # Check for duplicate job submission (idempotency)
+    existing_status = job_statuses.get(request.job_id)
+    if existing_status:
+        status = existing_status.get("status")
+        if status in ("accepted", "processing", "completed"):
+            logger.warning(f"Duplicate job rejected: {request.job_id} (status: {status})")
+            raise HTTPException(
+                status_code=409,
+                detail=f"Job {request.job_id} already exists with status '{status}'. "
+                       f"Cannot process duplicate job."
+            )
+        # If status is 'failed', allow reprocessing (intentional retry)
+        logger.info(f"Reprocessing previously failed job: {request.job_id}")
 
     # Apply model-specific defaults for parameters not explicitly set
     model_defaults = MODEL_DEFAULTS.get(request.model, {})

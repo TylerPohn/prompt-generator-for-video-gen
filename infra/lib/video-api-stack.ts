@@ -38,7 +38,7 @@ export class VideoApiStack extends cdk.Stack {
     // Main SQS Queue for video generation jobs
     this.jobQueue = new sqs.Queue(this, 'VideoJobQueue', {
       queueName: 'video-generation-queue',
-      visibilityTimeout: cdk.Duration.seconds(900), // 15 minutes (matches Lambda timeout)
+      visibilityTimeout: cdk.Duration.seconds(1200), // 20 minutes (exceeds Lambda timeout)
       receiveMessageWaitTime: cdk.Duration.seconds(20), // Long polling
       deadLetterQueue: {
         queue: deadLetterQueue,

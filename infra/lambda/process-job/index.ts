@@ -144,27 +144,34 @@ async function generateVideoWithGpu(
     body: JSON.stringify(requestBody),
   });
 
-  if (!submitResponse.ok) {
+  // Handle 409 Conflict (duplicate job) - job is already being processed, go directly to polling
+  const isDuplicateJob = submitResponse.status === 409;
+
+  if (!submitResponse.ok && !isDuplicateJob) {
     const errorText = await submitResponse.text();
     throw new Error(`GPU API error: ${submitResponse.status} - ${errorText}`);
   }
 
-  const submitData: FastAPIGenerateResponse = await submitResponse.json();
-  console.log(`Job accepted: ${JSON.stringify(submitData)}`);
+  if (isDuplicateJob) {
+    console.log(`Job ${jobId} already in progress on GPU, will poll for existing status`);
+  } else {
+    const submitData: FastAPIGenerateResponse = await submitResponse.json();
+    console.log(`Job accepted: ${JSON.stringify(submitData)}`);
 
-  if (submitData.status !== 'accepted') {
-    throw new Error(submitData.message || 'Job not accepted by GPU');
+    if (submitData.status !== 'accepted') {
+      throw new Error(submitData.message || 'Job not accepted by GPU');
+    }
   }
 
   // Step 2: Poll for status until completed or failed
   const pollIntervalMs = 15000; // Poll every 15 seconds
-  const maxPollingTimeMs = 12 * 60 * 1000; // 12 minutes (Lambda has 15 min max)
+  const maxPollingTimeMs = 14 * 60 * 1000; // 14 minutes (Lambda max is 15 min, need buffer)
   const startTime = Date.now();
 
   while (true) {
     // Check if we've exceeded max polling time
     if (Date.now() - startTime > maxPollingTimeMs) {
-      throw new Error('Video generation timed out after 12 minutes');
+      throw new Error('Video generation timed out after 14 minutes');
     }
 
     // Wait before polling (except for first check)
