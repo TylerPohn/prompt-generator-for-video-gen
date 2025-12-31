@@ -32,6 +32,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CUDA_LAUNCH_BLOCKING=0 \
     PYTORCH_NO_CUDA_MEMORY_CACHING=0
 
+# Auto-gen loop configuration (optional):
+# AUTO_GEN_ENABLED=true     - Enable continuous generation mode
+# AUTO_GEN_PROMPT="..."     - Required: The prompt to use for generation
+# AUTO_GEN_DURATION=4       - Required: Video duration in seconds (1-10)
+# AUTO_GEN_BUCKET="..."     - Required: S3 bucket for output videos
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3.10 \

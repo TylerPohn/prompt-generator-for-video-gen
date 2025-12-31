@@ -6,6 +6,8 @@ import os
 import asyncio
 import traceback
 import secrets
+import random
+import sys
 from contextlib import asynccontextmanager
 from typing import Optional
 from datetime import datetime
@@ -18,6 +20,22 @@ import torch
 
 from app.inference import create_video_generator, VideoGenerationError, BaseVideoGenerator
 from app.utils import upload_to_s3, cleanup_temp_file
+
+
+# Auto-gen loop configuration
+AUTO_GEN_ENABLED = os.environ.get('AUTO_GEN_ENABLED', 'false').lower() == 'true'
+AUTO_GEN_PROMPT = os.environ.get('AUTO_GEN_PROMPT', '')
+AUTO_GEN_DURATION = int(os.environ.get('AUTO_GEN_DURATION', '4'))
+AUTO_GEN_BUCKET = os.environ.get('AUTO_GEN_BUCKET', '')
+
+# Validate auto-gen config at import time
+if AUTO_GEN_ENABLED:
+    if not AUTO_GEN_PROMPT:
+        raise ValueError("AUTO_GEN_PROMPT is required when AUTO_GEN_ENABLED=true")
+    if not AUTO_GEN_BUCKET:
+        raise ValueError("AUTO_GEN_BUCKET is required when AUTO_GEN_ENABLED=true")
+    if AUTO_GEN_DURATION < 1 or AUTO_GEN_DURATION > 10:
+        raise ValueError("AUTO_GEN_DURATION must be between 1 and 10 seconds")
 
 
 # Model-specific default parameters
@@ -76,6 +94,11 @@ async def lifespan(app: FastAPI):
             logger.info(f"Loading model: {loaded_model_type}")
             video_generator = create_video_generator(loaded_model_type)
             logger.info(f"Model {loaded_model_type} loaded successfully!")
+
+            # Start auto-gen loop if enabled
+            if AUTO_GEN_ENABLED:
+                logger.info("Auto-gen mode enabled, starting generation loop...")
+                asyncio.create_task(auto_gen_loop())
         elif skip_model:
             logger.warning("Skipping model load (SKIP_MODEL_LOAD=true)")
         else:
@@ -333,6 +356,102 @@ async def generate_video_background(request: GenerateRequest, effective_steps: i
                 logger.error(f"[{job_id}] Cleanup error: {str(e)}")
 
 
+async def auto_gen_loop():
+    """
+    Continuous video generation loop for auto-gen mode.
+    Runs one job at a time, restarts container on CUDA OOM.
+    """
+    logger.info("Starting auto-gen loop...")
+    logger.info(f"Prompt: {AUTO_GEN_PROMPT}")
+    logger.info(f"Duration: {AUTO_GEN_DURATION}s")
+    logger.info(f"Bucket: {AUTO_GEN_BUCKET}")
+
+    job_count = 0
+
+    while True:
+        job_count += 1
+        # Generate random number for unique filename (using stdlib random)
+        random_id = random.randint(100000, 999999)
+        job_id = f"auto-gen-{random_id}"
+
+        logger.info(f"[AUTO-GEN] Starting job #{job_count}: {job_id}")
+
+        start_time = datetime.utcnow()
+        temp_video_path = None
+
+        try:
+            # Get model defaults
+            model_defaults = MODEL_DEFAULTS.get(loaded_model_type, {})
+            effective_steps = model_defaults.get("steps", 30)
+            effective_guidance = model_defaults.get("guidance_scale", 6.0)
+
+            # Generate video
+            generate_kwargs = {
+                "prompt": AUTO_GEN_PROMPT,
+                "num_inference_steps": effective_steps,
+                "duration_seconds": AUTO_GEN_DURATION,
+                "fps": 15,
+                "guidance_scale": effective_guidance,
+                "width": 1280,
+                "height": 704,
+                "seed": None,
+            }
+
+            temp_video_path = await asyncio.to_thread(
+                video_generator.generate,
+                **generate_kwargs
+            )
+
+            if not temp_video_path or not os.path.exists(temp_video_path):
+                raise VideoGenerationError("Video generation failed - no output file")
+
+            logger.info(f"[AUTO-GEN] [{job_id}] Video generated: {temp_video_path}")
+
+            # Upload to S3 with random number in filename
+            video_key = f"generated-videos/{job_id}.mp4"
+
+            s3_url = await asyncio.to_thread(
+                upload_to_s3,
+                file_path=temp_video_path,
+                bucket_name=AUTO_GEN_BUCKET,
+                s3_key=video_key
+            )
+
+            generation_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"[AUTO-GEN] [{job_id}] Completed in {generation_time:.2f}s - {s3_url}")
+
+        except torch.cuda.OutOfMemoryError as e:
+            logger.error(f"[AUTO-GEN] [{job_id}] CUDA OOM error: {e}")
+            logger.error("Exiting with code 1 to trigger container restart...")
+            sys.exit(1)
+
+        except RuntimeError as e:
+            # CUDA OOM sometimes raises RuntimeError
+            if "CUDA out of memory" in str(e) or "out of memory" in str(e).lower():
+                logger.error(f"[AUTO-GEN] [{job_id}] CUDA OOM error (RuntimeError): {e}")
+                logger.error("Exiting with code 1 to trigger container restart...")
+                sys.exit(1)
+            else:
+                logger.error(f"[AUTO-GEN] [{job_id}] Generation error: {e}")
+                logger.error(traceback.format_exc())
+                # Continue to next job on non-OOM errors
+
+        except Exception as e:
+            logger.error(f"[AUTO-GEN] [{job_id}] Generation error: {e}")
+            logger.error(traceback.format_exc())
+            # Continue to next job on other errors
+
+        finally:
+            # Cleanup temp file
+            if temp_video_path and os.path.exists(temp_video_path):
+                try:
+                    await asyncio.to_thread(cleanup_temp_file, temp_video_path)
+                except Exception as e:
+                    logger.error(f"[AUTO-GEN] [{job_id}] Cleanup error: {e}")
+
+        logger.info(f"[AUTO-GEN] Job #{job_count} finished, starting next job...")
+
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_video(request: GenerateRequest):
     """
@@ -346,6 +465,13 @@ async def generate_video(request: GenerateRequest):
     - job_id: The job ID to use for status polling
     - message: Instructions for status polling
     """
+    # Block external jobs in auto-gen mode
+    if AUTO_GEN_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Server is running in auto-gen mode. External job submissions are disabled."
+        )
+
     if not video_generator:
         logger.error("Model not loaded")
         raise HTTPException(status_code=503, detail="Model not loaded")
