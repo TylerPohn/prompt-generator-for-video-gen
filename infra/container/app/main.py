@@ -385,15 +385,15 @@ async def auto_gen_loop():
             effective_steps = model_defaults.get("steps", 30)
             effective_guidance = model_defaults.get("guidance_scale", 6.0)
 
-            # Generate video
+            # Generate video (using smaller resolution for A10G compatibility)
             generate_kwargs = {
                 "prompt": AUTO_GEN_PROMPT,
                 "num_inference_steps": effective_steps,
                 "duration_seconds": AUTO_GEN_DURATION,
                 "fps": 15,
                 "guidance_scale": effective_guidance,
-                "width": 1280,
-                "height": 704,
+                "width": 512,
+                "height": 288,
                 "seed": None,
             }
 
