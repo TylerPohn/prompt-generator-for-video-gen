@@ -132,6 +132,25 @@ export class VideoApiStack extends cdk.Stack {
     // Grant S3 put access for presigned upload URLs
     videoBucket.grantPut(getUploadUrlLambda);
 
+    // Lambda: List Videos (lists objects in S3 bucket with presigned URLs)
+    const listVideosLambda = new NodejsFunction(this, 'ListVideosFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      entry: path.join(__dirname, '../lambda/list-videos/index.ts'),
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        BUCKET_NAME: videoBucketName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+      },
+    });
+
+    // Grant S3 read permissions for listing and presigned URLs
+    videoBucket.grantRead(listVideosLambda);
+
     // SSM Parameter to store GPU endpoint (updated by start-gpu.sh script)
     const gpuEndpointParam = new ssm.StringParameter(this, 'GpuEndpointParam', {
       parameterName: '/video-generation/gpu-endpoint',
@@ -291,6 +310,14 @@ export class VideoApiStack extends cdk.Stack {
 
     uploadUrlResource.addMethod('POST', uploadUrlIntegration, {
       apiKeyRequired: false, // Set to true to require API key
+    });
+
+    // GET /videos endpoint (lists videos from S3 bucket)
+    const videosResource = this.api.root.addResource('videos');
+    const listVideosIntegration = new apigateway.LambdaIntegration(listVideosLambda);
+
+    videosResource.addMethod('GET', listVideosIntegration, {
+      apiKeyRequired: false,
     });
 
     // Outputs

@@ -15,3 +15,6 @@ export * from './DeleteButton';
 export * from './LoadingSkeleton';
 export * from './Tooltip';
 export * from './EmptyState';
+export * from './Navbar';
+export * from './S3VideoCard';
+export * from './S3VideoFilterControls';

@@ -61,3 +61,16 @@ export interface FastAPIResponse {
   video_url: string;
   generation_time: number;
 }
+
+export interface VideoItem {
+  key: string;
+  url: string;
+  size: number;
+  lastModified: string;
+}
+
+export interface ListVideosResponse {
+  videos: VideoItem[];
+  nextToken?: string;
+  totalCount: number;
+}

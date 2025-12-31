@@ -4,10 +4,11 @@
   "description": "Lambda functions for AI video generation service",
   "main": "index.js",
   "scripts": {
-    "build": "npm run build:submit-job && npm run build:get-status && npm run build:process-job",
+    "build": "npm run build:submit-job && npm run build:get-status && npm run build:process-job && npm run build:list-videos",
     "build:submit-job": "esbuild submit-job/index.ts --bundle --platform=node --target=node20 --outfile=dist/submit-job/index.js --external:@aws-sdk/*",
     "build:get-status": "esbuild get-status/index.ts --bundle --platform=node --target=node20 --outfile=dist/get-status/index.js --external:@aws-sdk/*",
     "build:process-job": "esbuild process-job/index.ts --bundle --platform=node --target=node20 --outfile=dist/process-job/index.js --external:@aws-sdk/*",
+    "build:list-videos": "esbuild list-videos/index.ts --bundle --platform=node --target=node20 --outfile=dist/list-videos/index.js --external:@aws-sdk/*",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },

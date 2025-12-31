@@ -28,6 +28,30 @@ export interface GetStatusResponse {
   updatedAt: string;
 }
 
+export interface S3VideoItem {
+  key: string;
+  url: string;
+  size: number;
+  lastModified: string;
+}
+
+export interface ListVideosResponse {
+  videos: S3VideoItem[];
+  nextToken?: string;
+  totalCount: number;
+}
+
+export type SortField = 'lastModified' | 'size' | 'key';
+export type SortOrder = 'asc' | 'desc';
+
+export interface ListVideosParams {
+  pageSize?: number;
+  page?: number;
+  search?: string;
+  sortField?: SortField;
+  sortOrder?: SortOrder;
+}
+
 const getAwsConfig = () => {
   const endpoint = import.meta.env.VITE_AWS_VIDEO_API_ENDPOINT;
   const apiKey = import.meta.env.VITE_AWS_VIDEO_API_KEY;
@@ -104,6 +128,36 @@ export class AwsVideoClient {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Failed to get upload URL: ${response.status} - ${error}`);
+    }
+
+    return response.json();
+  }
+
+  async listVideos(options: ListVideosParams = {}): Promise<ListVideosResponse> {
+    const {
+      pageSize = 24,
+      page = 1,
+      search = '',
+      sortField = 'lastModified',
+      sortOrder = 'desc',
+    } = options;
+
+    const params = new URLSearchParams();
+    params.set('pageSize', pageSize.toString());
+    params.set('page', page.toString());
+    if (search) {
+      params.set('search', search);
+    }
+    params.set('sortField', sortField);
+    params.set('sortOrder', sortOrder);
+
+    const response = await fetch(`${this.endpoint}/videos?${params.toString()}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list videos: ${response.status}`);
     }
 
     return response.json();
