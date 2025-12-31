@@ -113,12 +113,20 @@ PAYLOAD=$(cat <<EOF
 EOF
 )
 
+# Helper to extract JSON value (no jq dependency)
+json_val() {
+    echo "$1" | grep -o "\"$2\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | sed "s/\"$2\"[[:space:]]*:[[:space:]]*\"//" | sed 's/"$//' | head -1
+}
+
 echo "Submitting job: $JOB_ID"
 RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
     -H "Content-Type: application/json" \
     -d "$PAYLOAD")
 
-STATUS=$(echo "$RESPONSE" | jq -r '.status // .detail // "unknown"')
+STATUS=$(json_val "$RESPONSE" "status")
+if [[ -z "$STATUS" ]]; then
+    STATUS=$(json_val "$RESPONSE" "detail")
+fi
 
 if [[ "$STATUS" == "accepted" ]]; then
     echo "Job accepted, polling for completion..."
@@ -135,18 +143,18 @@ for i in $(seq 1 $MAX_POLLS); do
     sleep $POLL_INTERVAL
 
     STATUS_RESPONSE=$(curl -s "${API_ENDPOINT}/status/${JOB_ID}")
-    STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.status')
+    STATUS=$(json_val "$STATUS_RESPONSE" "status")
 
     case $STATUS in
         completed)
-            VIDEO_URL=$(echo "$STATUS_RESPONSE" | jq -r '.videoUrl')
+            VIDEO_URL=$(json_val "$STATUS_RESPONSE" "videoUrl")
             echo ""
             echo "Video generated successfully!"
             echo "URL: $VIDEO_URL"
             exit 0
             ;;
         failed)
-            ERROR=$(echo "$STATUS_RESPONSE" | jq -r '.error')
+            ERROR=$(json_val "$STATUS_RESPONSE" "error")
             echo ""
             echo "Generation failed: $ERROR"
             exit 1
