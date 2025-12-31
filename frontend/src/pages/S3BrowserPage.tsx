@@ -1,10 +1,13 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { EmptyState, S3VideoFilterControls } from '../components';
-import { VideoCardSkeleton } from '../components/LoadingSkeleton';
-import { S3VideoCard } from '../components/S3VideoCard';
+import { AdaptiveVideoCardSkeleton } from '../components/LoadingSkeleton';
+import { AdaptiveS3VideoCard } from '../components/AdaptiveS3VideoCard';
 import { useS3Videos } from '../hooks';
 
+type DisplayMode = 'adaptive' | 'landscape' | 'portrait';
+
 export function S3BrowserPage() {
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('adaptive');
   const {
     videos,
     isLoading,
@@ -100,6 +103,29 @@ export function S3BrowserPage() {
           isLoading={isLoading}
         />
 
+        {/* Display Mode Control */}
+        <div className="mb-6 flex items-center gap-2 text-sm">
+          <span className="text-gray-400">Display:</span>
+          <button
+            onClick={() => setDisplayMode('adaptive')}
+            className={`px-3 py-1 rounded ${displayMode === 'adaptive' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+          >
+            Adaptive
+          </button>
+          <button
+            onClick={() => setDisplayMode('landscape')}
+            className={`px-3 py-1 rounded ${displayMode === 'landscape' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+          >
+            Horizontal
+          </button>
+          <button
+            onClick={() => setDisplayMode('portrait')}
+            className={`px-3 py-1 rounded ${displayMode === 'portrait' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+          >
+            Vertical
+          </button>
+        </div>
+
         {error && (
           <div className="mb-6 bg-red-900/50 border border-red-700 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -136,9 +162,12 @@ export function S3BrowserPage() {
         )}
 
         {isLoading && videos.length === 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="columns-1 md:columns-2 lg:columns-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
-              <VideoCardSkeleton key={i} />
+              <AdaptiveVideoCardSkeleton
+                key={i}
+                isPortrait={displayMode === 'portrait' || (displayMode === 'adaptive' && i % 2 === 1)}
+              />
             ))}
           </div>
         )}
@@ -189,14 +218,15 @@ export function S3BrowserPage() {
 
         {videos.length > 0 && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="columns-1 md:columns-2 lg:columns-3 gap-6">
               {videos.map((video) => (
-                <S3VideoCard
+                <AdaptiveS3VideoCard
                   key={video.key}
                   videoKey={video.key}
                   url={video.url}
                   size={video.size}
                   lastModified={video.lastModified}
+                  forceAspect={displayMode}
                 />
               ))}
             </div>

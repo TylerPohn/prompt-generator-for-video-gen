@@ -17,3 +17,15 @@ export function VideoCardSkeleton() {
     </div>
   );
 }
+
+export function AdaptiveVideoCardSkeleton({ isPortrait = false }: { isPortrait?: boolean }) {
+  return (
+    <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg break-inside-avoid mb-6 animate-pulse">
+      <div className={`${isPortrait ? 'aspect-[9/16]' : 'aspect-video'} bg-gray-700`} />
+      <div className="p-4 space-y-2">
+        <div className="h-4 bg-gray-700 rounded w-3/4" />
+        <div className="h-3 bg-gray-700 rounded w-1/2" />
+      </div>
+    </div>
+  );
+}

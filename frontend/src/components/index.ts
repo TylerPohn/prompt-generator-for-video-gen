@@ -18,3 +18,5 @@ export * from './EmptyState';
 export * from './Navbar';
 export * from './S3VideoCard';
 export * from './S3VideoFilterControls';
+export * from './AdaptiveVideoPlayer';
+export * from './AdaptiveS3VideoCard';
