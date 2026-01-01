@@ -41,6 +41,10 @@ export function VideoPlayer({ videoUrl, onVisible }: VideoPlayerProps) {
         <video
           src={videoUrl}
           controls
+          autoPlay
+          loop
+          muted
+          playsInline
           className="w-full h-full"
           preload="metadata"
         >

@@ -82,6 +82,10 @@ export function AdaptiveVideoPlayer({ videoUrl, onVisible, forceAspect = 'adapti
           ref={videoRef}
           src={videoUrl}
           controls
+          autoPlay
+          loop
+          muted
+          playsInline
           className="w-full h-full object-contain"
           preload="metadata"
           onLoadedMetadata={handleLoadedMetadata}
