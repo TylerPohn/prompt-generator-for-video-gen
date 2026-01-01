@@ -3,6 +3,9 @@
 
 export type BackendType = 'aws' | 'local' | 'replicate';
 
+// Feature flags
+export const ENABLE_VIDEO_GEN = import.meta.env.VITE_ENABLE_VIDEO_GEN === 'true';
+
 // Check if AWS API is configured
 export function isAwsConfigured(): boolean {
   return !!(

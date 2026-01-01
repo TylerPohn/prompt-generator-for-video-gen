@@ -3,6 +3,7 @@ import { EmptyState, S3VideoFilterControls } from '../components';
 import { AdaptiveVideoCardSkeleton } from '../components/LoadingSkeleton';
 import { AdaptiveS3VideoCard } from '../components/AdaptiveS3VideoCard';
 import { useS3Videos } from '../hooks';
+import { ENABLE_VIDEO_GEN } from '../services/config';
 
 type DisplayMode = 'adaptive' | 'landscape' | 'portrait';
 
@@ -61,17 +62,17 @@ export function S3BrowserPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-100">
-              S3 Video Browser
+              Video Library
               {videos.length > 0 && (
                 <span className="ml-2 text-lg font-normal text-gray-400">
                   ({videos.length} of {totalCount} shown)
                 </span>
               )}
             </h2>
-            <p className="text-gray-400 mt-1">Browse videos stored in S3</p>
+            <p className="text-gray-400 mt-1">Browse all generated videos</p>
           </div>
           <div className="flex gap-2">
-            {hasMore && (
+            {ENABLE_VIDEO_GEN && hasMore && (
               <button
                 onClick={loadAll}
                 disabled={isLoading}
@@ -190,7 +191,7 @@ export function S3BrowserPage() {
               </svg>
             }
             title="No videos found"
-            description="No videos have been generated yet. Go to Video Lab to create some!"
+            description={ENABLE_VIDEO_GEN ? "No videos have been generated yet. Go to Video Lab to create some!" : "No videos available yet. Check back soon!"}
           />
         )}
 

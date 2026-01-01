@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { ENABLE_VIDEO_GEN } from '../services/config';
 
 interface NavLink {
   path: string;
@@ -6,12 +7,24 @@ interface NavLink {
 }
 
 const navLinks: NavLink[] = [
-  { path: '/', label: 'Video Lab' },
-  { path: '/browser', label: 'S3 Browser' },
+  ...(ENABLE_VIDEO_GEN ? [{ path: '/', label: 'Video Lab' }] : []),
+  { path: '/browser', label: 'Library' },
 ];
 
 export function Navbar() {
   const location = useLocation();
+
+  // Public mode: show branded header instead of navigation
+  if (!ENABLE_VIDEO_GEN) {
+    return (
+      <header className="bg-gray-900 border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-6 text-center">
+          <h1 className="text-2xl font-bold text-white">AI Generated Hentai</h1>
+          <p className="text-gray-400 mt-1">New vids generated every few minutes, 24/7</p>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <nav className="bg-gray-900 border-b border-gray-800">
