@@ -20,6 +20,7 @@ export interface VideoApiStackProps extends cdk.StackProps {
 export class VideoApiStack extends cdk.Stack {
   public readonly jobQueue: sqs.Queue;
   public readonly jobTable: dynamodb.Table;
+  public readonly upvotesTable: dynamodb.Table;
   public readonly api: apigateway.RestApi;
 
   constructor(scope: Construct, id: string, props: VideoApiStackProps) {
@@ -70,6 +71,17 @@ export class VideoApiStack extends cdk.Stack {
         name: 'createdAt',
         type: dynamodb.AttributeType.NUMBER,
       },
+    });
+
+    // DynamoDB Table for video upvotes
+    this.upvotesTable = new dynamodb.Table(this, 'VideoUpvotesTable', {
+      tableName: 'video-upvotes',
+      partitionKey: {
+        name: 'videoKey',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     // Lambda: Submit Job (NodejsFunction handles TypeScript compilation)
@@ -141,6 +153,7 @@ export class VideoApiStack extends cdk.Stack {
       memorySize: 256,
       environment: {
         BUCKET_NAME: videoBucketName,
+        UPVOTES_TABLE_NAME: this.upvotesTable.tableName,
       },
       bundling: {
         minify: true,
@@ -150,6 +163,25 @@ export class VideoApiStack extends cdk.Stack {
 
     // Grant S3 read permissions for listing and presigned URLs
     videoBucket.grantRead(listVideosLambda);
+    this.upvotesTable.grantReadData(listVideosLambda);
+
+    // Lambda: Upvote Video (increments/decrements upvote count)
+    const upvoteVideoLambda = new NodejsFunction(this, 'UpvoteVideoFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      entry: path.join(__dirname, '../lambda/upvote-video/index.ts'),
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(10),
+      environment: {
+        UPVOTES_TABLE_NAME: this.upvotesTable.tableName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+      },
+    });
+
+    // Grant DynamoDB permissions
+    this.upvotesTable.grantReadWriteData(upvoteVideoLambda);
 
     // SSM Parameter to store GPU endpoint (updated by start-gpu.sh script)
     const gpuEndpointParam = new ssm.StringParameter(this, 'GpuEndpointParam', {
@@ -317,6 +349,14 @@ export class VideoApiStack extends cdk.Stack {
     const listVideosIntegration = new apigateway.LambdaIntegration(listVideosLambda);
 
     videosResource.addMethod('GET', listVideosIntegration, {
+      apiKeyRequired: false,
+    });
+
+    // POST /videos/upvote endpoint
+    const upvoteResource = videosResource.addResource('upvote');
+    const upvoteIntegration = new apigateway.LambdaIntegration(upvoteVideoLambda);
+
+    upvoteResource.addMethod('POST', upvoteIntegration, {
       apiKeyRequired: false,
     });
 

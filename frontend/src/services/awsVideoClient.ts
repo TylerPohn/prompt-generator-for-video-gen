@@ -33,6 +33,7 @@ export interface S3VideoItem {
   url: string;
   size: number;
   lastModified: string;
+  upvotes: number;
 }
 
 export interface ListVideosResponse {
@@ -41,7 +42,7 @@ export interface ListVideosResponse {
   totalCount: number;
 }
 
-export type SortField = 'lastModified' | 'size' | 'key';
+export type SortField = 'lastModified' | 'size' | 'key' | 'upvotes';
 export type SortOrder = 'asc' | 'desc';
 
 export interface ListVideosParams {
@@ -158,6 +159,21 @@ export class AwsVideoClient {
 
     if (!response.ok) {
       throw new Error(`Failed to list videos: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async upvoteVideo(videoKey: string, action: 'increment' | 'decrement'): Promise<{ videoKey: string; upvotes: number }> {
+    const response = await fetch(`${this.endpoint}/videos/upvote`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ videoKey, action }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to upvote video: ${response.status} - ${error}`);
     }
 
     return response.json();

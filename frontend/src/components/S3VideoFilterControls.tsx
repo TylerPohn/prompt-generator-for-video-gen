@@ -17,6 +17,7 @@ const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'lastModified', label: 'Date' },
   { value: 'size', label: 'Size' },
   { value: 'key', label: 'Name' },
+  { value: 'upvotes', label: 'Upvotes' },
 ];
 
 export function S3VideoFilterControls({

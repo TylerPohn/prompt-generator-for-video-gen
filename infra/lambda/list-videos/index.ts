@@ -1,10 +1,15 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { S3Client, ListObjectsV2Command, GetObjectCommand, _Object } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 
 const s3Client = new S3Client({});
+const dynamoClient = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const BUCKET_NAME = process.env.BUCKET_NAME!;
+const UPVOTES_TABLE_NAME = process.env.UPVOTES_TABLE_NAME!;
 const PRESIGNED_URL_EXPIRY = 3600; // 1 hour
 
 const CORS_HEADERS = {
@@ -14,7 +19,7 @@ const CORS_HEADERS = {
   'Content-Type': 'application/json',
 };
 
-type SortField = 'lastModified' | 'size' | 'key';
+type SortField = 'lastModified' | 'size' | 'key' | 'upvotes';
 type SortOrder = 'asc' | 'desc';
 
 interface VideoItem {
@@ -22,6 +27,7 @@ interface VideoItem {
   url: string;
   size: number;
   lastModified: string;
+  upvotes: number;
 }
 
 interface ListVideosResponse {
@@ -54,7 +60,12 @@ async function fetchAllObjects(prefix: string): Promise<_Object[]> {
 }
 
 // Sort S3 objects based on field and order
-function sortObjects(objects: _Object[], sortField: SortField, sortOrder: SortOrder): _Object[] {
+function sortObjects(
+  objects: _Object[],
+  sortField: SortField,
+  sortOrder: SortOrder,
+  upvotesMap?: Map<string, number>
+): _Object[] {
   return [...objects].sort((a, b) => {
     let comparison = 0;
 
@@ -71,6 +82,19 @@ function sortObjects(objects: _Object[], sortField: SortField, sortOrder: SortOr
         comparison = aName.localeCompare(bName);
         break;
       }
+      case 'upvotes': {
+        const aUpvotes = upvotesMap?.get(a.Key || '') || 0;
+        const bUpvotes = upvotesMap?.get(b.Key || '') || 0;
+        comparison = aUpvotes - bUpvotes;
+
+        // If upvotes are equal, sort by date (newest first)
+        if (comparison === 0) {
+          comparison = (a.LastModified?.getTime() || 0) - (b.LastModified?.getTime() || 0);
+          // Reverse for newest first as secondary sort
+          comparison = -comparison;
+        }
+        break;
+      }
     }
 
     return sortOrder === 'asc' ? comparison : -comparison;
@@ -85,6 +109,43 @@ function filterBySearch(objects: _Object[], search: string): _Object[] {
     const filename = obj.Key?.split('/').pop() || '';
     return filename.toLowerCase().includes(query);
   });
+}
+
+// Batch fetch upvotes from DynamoDB
+async function fetchUpvotes(videoKeys: string[]): Promise<Map<string, number>> {
+  const upvotesMap = new Map<string, number>();
+
+  if (videoKeys.length === 0) return upvotesMap;
+
+  // DynamoDB BatchGetItem has a limit of 100 items per request
+  const BATCH_SIZE = 100;
+
+  for (let i = 0; i < videoKeys.length; i += BATCH_SIZE) {
+    const batch = videoKeys.slice(i, i + BATCH_SIZE);
+    const keys = batch.map(key => ({ videoKey: key }));
+
+    try {
+      const result = await docClient.send(
+        new BatchGetCommand({
+          RequestItems: {
+            [UPVOTES_TABLE_NAME]: {
+              Keys: keys,
+            },
+          },
+        })
+      );
+
+      const items = result.Responses?.[UPVOTES_TABLE_NAME] || [];
+      for (const item of items) {
+        upvotesMap.set(item.videoKey as string, item.upvotes as number);
+      }
+    } catch (error) {
+      console.error('Error fetching upvotes batch:', error);
+      // Continue with 0 upvotes for failed batch
+    }
+  }
+
+  return upvotesMap;
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -121,8 +182,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Get total count before pagination
     const totalCount = videoObjects.length;
 
-    // Apply sorting
-    videoObjects = sortObjects(videoObjects, sortField, sortOrder);
+    // Fetch upvotes for all filtered videos
+    const allVideoKeys = videoObjects.map(obj => obj.Key!);
+    const upvotesMap = await fetchUpvotes(allVideoKeys);
+
+    // Apply sorting (pass upvotesMap for upvotes sort)
+    videoObjects = sortObjects(videoObjects, sortField, sortOrder, upvotesMap);
 
     // Apply pagination
     const startIndex = (page - 1) * pageSize;
@@ -145,6 +210,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         url: presignedUrl,
         size: object.Size || 0,
         lastModified: object.LastModified?.toISOString() || '',
+        upvotes: upvotesMap.get(object.Key!) || 0,
       });
     }
 

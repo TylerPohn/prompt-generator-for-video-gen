@@ -3,6 +3,7 @@ import { EmptyState, S3VideoFilterControls } from '../components';
 import { AdaptiveVideoCardSkeleton } from '../components/LoadingSkeleton';
 import { AdaptiveS3VideoCard } from '../components/AdaptiveS3VideoCard';
 import { useS3Videos } from '../hooks';
+import { useVideoUpvotes } from '../hooks/useVideoUpvotes';
 import { ENABLE_VIDEO_GEN } from '../services/config';
 
 type DisplayMode = 'adaptive' | 'landscape' | 'portrait';
@@ -25,6 +26,8 @@ export function S3BrowserPage() {
     loadAll,
     refresh,
   } = useS3Videos();
+
+  const { isUpvoted, toggleUpvote, isPending } = useVideoUpvotes();
 
   // Infinite scroll: observe a sentinel element at the bottom
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -227,6 +230,10 @@ export function S3BrowserPage() {
                   url={video.url}
                   size={video.size}
                   lastModified={video.lastModified}
+                  upvotes={video.upvotes}
+                  isUpvoted={isUpvoted(video.key)}
+                  isPending={isPending(video.key)}
+                  onToggleUpvote={() => toggleUpvote(video.key, video.upvotes)}
                   forceAspect={displayMode}
                 />
               ))}
