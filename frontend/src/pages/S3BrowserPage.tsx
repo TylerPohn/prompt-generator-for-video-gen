@@ -9,7 +9,7 @@ import { ENABLE_VIDEO_GEN } from '../services/config';
 type DisplayMode = 'adaptive' | 'landscape' | 'portrait';
 
 export function S3BrowserPage() {
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('adaptive');
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('portrait');
   const {
     videos,
     isLoading,
