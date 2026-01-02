@@ -128,6 +128,7 @@ export function useVideoGeneration() {
         duration,
         status: 'pending',
         isFavorite: false,
+        markedForDeletion: false,
         labels: [],
         createdAt: Date.now(),
         retryCount: 0,

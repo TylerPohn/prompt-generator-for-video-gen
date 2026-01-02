@@ -179,6 +179,21 @@ export class AwsVideoClient {
     return response.json();
   }
 
+  async hideVideo(videoKey: string, hidden: boolean): Promise<{ videoKey: string; hidden: boolean }> {
+    const response = await fetch(`${this.endpoint}/videos/hide`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ videoKey, hidden }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to hide video: ${response.status} - ${error}`);
+    }
+
+    return response.json();
+  }
+
   async pollJobUntilComplete(
     jobId: string,
     options: {

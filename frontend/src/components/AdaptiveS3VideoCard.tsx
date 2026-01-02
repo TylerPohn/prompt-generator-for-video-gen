@@ -11,6 +11,8 @@ interface AdaptiveS3VideoCardProps {
   isUpvoted: boolean;
   isPending: boolean;
   onToggleUpvote: () => void;
+  isMarkedForDeletion: boolean;
+  onToggleMarkedForDeletion: () => void;
   forceAspect?: 'adaptive' | 'landscape' | 'portrait';
 }
 
@@ -37,6 +39,8 @@ export function AdaptiveS3VideoCard({
   isUpvoted,
   isPending,
   onToggleUpvote,
+  isMarkedForDeletion,
+  onToggleMarkedForDeletion,
   forceAspect
 }: AdaptiveS3VideoCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -55,6 +59,11 @@ export function AdaptiveS3VideoCard({
     onToggleUpvote();
   };
 
+  const handleMarkClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleMarkedForDeletion();
+  };
+
   return (
     <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg break-inside-avoid mb-6">
       <AdaptiveVideoPlayer videoUrl={url} forceAspect={forceAspect} />
@@ -70,20 +79,35 @@ export function AdaptiveS3VideoCard({
             </p>
           </button>
 
-          {/* Upvote Button */}
-          <button
-            onClick={handleUpvoteClick}
-            disabled={isPending}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
-              isUpvoted
-                ? 'text-red-500 hover:text-red-400'
-                : 'text-gray-400 hover:text-red-400'
-            } ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={isUpvoted ? 'Remove upvote' : 'Upvote'}
-          >
-            <HeartIcon filled={isUpvoted} className="w-4 h-4" />
-            <span className="text-xs font-medium">{displayUpvotes}</span>
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Mark for Deletion Button */}
+            <button
+              onClick={handleMarkClick}
+              className={`flex items-center px-2 py-1 rounded-md transition-colors ${
+                isMarkedForDeletion
+                  ? 'text-red-500 hover:text-red-400'
+                  : 'text-gray-400 hover:text-red-400'
+              }`}
+              title={isMarkedForDeletion ? 'Unmark for deletion' : 'Mark for deletion'}
+            >
+              <span className="text-sm">{isMarkedForDeletion ? '🗑️' : '🗑'}</span>
+            </button>
+
+            {/* Upvote Button */}
+            <button
+              onClick={handleUpvoteClick}
+              disabled={isPending}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
+                isUpvoted
+                  ? 'text-red-500 hover:text-red-400'
+                  : 'text-gray-400 hover:text-red-400'
+              } ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={isUpvoted ? 'Remove upvote' : 'Upvote'}
+            >
+              <HeartIcon filled={isUpvoted} className="w-4 h-4" />
+              <span className="text-xs font-medium">{displayUpvotes}</span>
+            </button>
+          </div>
         </div>
 
         <div className="mt-2 flex items-center justify-between text-xs text-gray-400">

@@ -10,6 +10,7 @@ export interface VideoCard {
   videoUrl?: string;
   thumbnailUrl?: string;
   isFavorite: boolean;
+  markedForDeletion: boolean;
   labels: string[];
   createdAt: number; // timestamp
   errorMessage?: string; // for error status

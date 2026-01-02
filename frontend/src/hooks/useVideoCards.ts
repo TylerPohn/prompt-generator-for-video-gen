@@ -70,6 +70,22 @@ export function useVideoCards() {
     );
   }, []);
 
+  const toggleMarkedForDeletion = useCallback((id: string) => {
+    setCards(prev =>
+      prev.map(card =>
+        card.id === id ? { ...card, markedForDeletion: !card.markedForDeletion } : card
+      )
+    );
+  }, []);
+
+  const deleteMarkedCards = useCallback(() => {
+    setCards(prev => prev.filter(card => !card.markedForDeletion));
+  }, []);
+
+  const getMarkedCount = useCallback(() => {
+    return cards.filter(card => card.markedForDeletion).length;
+  }, [cards]);
+
   const addLabel = useCallback((id: string, label: string) => {
     setCards(prev =>
       prev.map(card =>
@@ -96,6 +112,9 @@ export function useVideoCards() {
     updateCard,
     deleteCard,
     toggleFavorite,
+    toggleMarkedForDeletion,
+    deleteMarkedCards,
+    getMarkedCount,
     addLabel,
     removeLabel,
   };

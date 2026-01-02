@@ -183,6 +183,24 @@ export class VideoApiStack extends cdk.Stack {
     // Grant DynamoDB permissions
     this.upvotesTable.grantReadWriteData(upvoteVideoLambda);
 
+    // Lambda: Hide Video (marks video as hidden for all users)
+    const hideVideoLambda = new NodejsFunction(this, 'HideVideoFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      entry: path.join(__dirname, '../lambda/hide-video/index.ts'),
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(10),
+      environment: {
+        UPVOTES_TABLE_NAME: this.upvotesTable.tableName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+      },
+    });
+
+    // Grant DynamoDB permissions
+    this.upvotesTable.grantReadWriteData(hideVideoLambda);
+
     // SSM Parameter to store GPU endpoint (updated by start-gpu.sh script)
     const gpuEndpointParam = new ssm.StringParameter(this, 'GpuEndpointParam', {
       parameterName: '/video-generation/gpu-endpoint',
@@ -357,6 +375,14 @@ export class VideoApiStack extends cdk.Stack {
     const upvoteIntegration = new apigateway.LambdaIntegration(upvoteVideoLambda);
 
     upvoteResource.addMethod('POST', upvoteIntegration, {
+      apiKeyRequired: false,
+    });
+
+    // POST /videos/hide endpoint
+    const hideResource = videosResource.addResource('hide');
+    const hideIntegration = new apigateway.LambdaIntegration(hideVideoLambda);
+
+    hideResource.addMethod('POST', hideIntegration, {
       apiKeyRequired: false,
     });
 

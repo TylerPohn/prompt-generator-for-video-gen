@@ -1,0 +1,9 @@
+# robots.txt for AI Generated Hentai
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://anime-ass.com/sitemap.xml
+
+# Crawl-delay (be nice to servers)
+Crawl-delay: 1

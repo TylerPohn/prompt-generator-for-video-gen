@@ -11,10 +11,12 @@ import { DeleteButton } from './DeleteButton';
 import { useLabelColors } from '../hooks';
 import { useVideoGeneration } from '../hooks';
 import { generateAndStoreThumbnail } from '../utils/thumbnail';
+import { ENABLE_VIDEO_GEN } from '../services/config';
 
 interface VideoCardProps {
   card: VideoCardType;
   onToggleFavorite: (id: string) => void;
+  onToggleMarkedForDeletion: (id: string) => void;
   onAddLabel: (id: string, label: string) => void;
   onRemoveLabel: (id: string, label: string) => void;
   onThumbnailGenerated: (id: string, thumbnailUrl: string) => void;
@@ -25,6 +27,7 @@ interface VideoCardProps {
 export function VideoCard({
   card,
   onToggleFavorite,
+  onToggleMarkedForDeletion,
   onAddLabel,
   onRemoveLabel,
   onThumbnailGenerated,
@@ -57,7 +60,9 @@ export function VideoCard({
     : card.prompt.slice(0, promptPreviewLength) + (needsTruncation ? '...' : '');
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden animate-fadeIn hover:shadow-md transition-shadow">
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden animate-fadeIn hover:shadow-md transition-shadow ${
+      card.markedForDeletion ? 'ring-2 ring-red-400 opacity-75' : ''
+    }`}>
       {/* Video/Placeholder */}
       <div className="p-4 pb-3">
         {card.status === 'complete' && card.videoUrl ? (
@@ -125,6 +130,20 @@ export function VideoCard({
               onDelete={() => onDelete(card.id)}
               itemName="video card"
             />
+
+            {/* Mark for Deletion Button - only when video gen is enabled */}
+            {ENABLE_VIDEO_GEN && (
+              <button
+                onClick={() => onToggleMarkedForDeletion(card.id)}
+                className={`text-xl hover:scale-110 transition-transform ${
+                  card.markedForDeletion ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
+                }`}
+                aria-label={card.markedForDeletion ? 'Unmark for deletion' : 'Mark for deletion'}
+                title={card.markedForDeletion ? 'Unmark for deletion' : 'Mark for deletion'}
+              >
+                {card.markedForDeletion ? '🗑️' : '🗑'}
+              </button>
+            )}
           </div>
 
           <div className="flex gap-2">

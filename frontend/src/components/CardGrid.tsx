@@ -5,6 +5,7 @@ import { VideoCard } from './VideoCard';
 interface CardGridProps {
   cards: VideoCardType[];
   onToggleFavorite: (id: string) => void;
+  onToggleMarkedForDeletion: (id: string) => void;
   onAddLabel: (id: string, label: string) => void;
   onRemoveLabel: (id: string, label: string) => void;
   onThumbnailGenerated: (id: string, thumbnailUrl: string) => void;
@@ -17,6 +18,7 @@ const CARDS_PER_PAGE = 24;
 export function CardGrid({
   cards,
   onToggleFavorite,
+  onToggleMarkedForDeletion,
   onAddLabel,
   onRemoveLabel,
   onThumbnailGenerated,
@@ -67,6 +69,7 @@ export function CardGrid({
             key={card.id}
             card={card}
             onToggleFavorite={onToggleFavorite}
+            onToggleMarkedForDeletion={onToggleMarkedForDeletion}
             onAddLabel={onAddLabel}
             onRemoveLabel={onRemoveLabel}
             onThumbnailGenerated={onThumbnailGenerated}

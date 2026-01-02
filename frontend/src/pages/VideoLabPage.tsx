@@ -12,7 +12,7 @@ import { useVideoCards, useFilters } from '../hooks';
 export function VideoLabPage() {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const [currentDuration, setCurrentDuration] = useState(4); // Default 4 seconds
-  const { cards, toggleFavorite, addLabel, removeLabel, updateCard, deleteCard, addCard } = useVideoCards();
+  const { cards, toggleFavorite, toggleMarkedForDeletion, addLabel, removeLabel, updateCard, deleteCard, addCard } = useVideoCards();
 
   // Initialize filters
   const {
@@ -83,6 +83,7 @@ export function VideoLabPage() {
           <CardGrid
             cards={filteredCards}
             onToggleFavorite={toggleFavorite}
+            onToggleMarkedForDeletion={toggleMarkedForDeletion}
             onAddLabel={addLabel}
             onRemoveLabel={removeLabel}
             onThumbnailGenerated={handleThumbnailGenerated}

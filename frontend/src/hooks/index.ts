@@ -6,3 +6,4 @@ export * from './useCopyToClipboard';
 export * from './useThumbnailGeneration';
 export * from './useFilters';
 export * from './useS3Videos';
+export * from './useMarkedForDeletion';

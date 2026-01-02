@@ -1,8 +1,8 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { EmptyState, S3VideoFilterControls } from '../components';
 import { AdaptiveVideoCardSkeleton } from '../components/LoadingSkeleton';
 import { AdaptiveS3VideoCard } from '../components/AdaptiveS3VideoCard';
-import { useS3Videos } from '../hooks';
+import { useS3Videos, useMarkedForDeletion } from '../hooks';
 import { useVideoUpvotes } from '../hooks/useVideoUpvotes';
 import { ENABLE_VIDEO_GEN } from '../services/config';
 
@@ -27,7 +27,14 @@ export function S3BrowserPage() {
     refresh,
   } = useS3Videos();
 
-  const { isUpvoted, toggleUpvote, isPending } = useVideoUpvotes();
+  const { isUpvoted, toggleUpvote, isPending: isUpvotePending } = useVideoUpvotes();
+  const { isMarked, toggleMarked } = useMarkedForDeletion();
+
+  // Filter out locally-marked videos for optimistic UI
+  // (Backend also filters, but this gives immediate feedback)
+  const visibleVideos = useMemo(() => {
+    return videos.filter(video => !isMarked(video.key));
+  }, [videos, isMarked]);
 
   // Infinite scroll: observe a sentinel element at the bottom
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -66,9 +73,9 @@ export function S3BrowserPage() {
           <div>
             <h2 className="text-2xl font-bold text-gray-100">
               Video Library
-              {videos.length > 0 && (
+              {visibleVideos.length > 0 && (
                 <span className="ml-2 text-lg font-normal text-gray-400">
-                  ({videos.length} of {totalCount} shown)
+                  ({visibleVideos.length} of {totalCount} shown)
                 </span>
               )}
             </h2>
@@ -103,7 +110,7 @@ export function S3BrowserPage() {
           onClearFilters={clearFilters}
           hasActiveFilters={hasActiveFilters}
           totalCount={totalCount}
-          filteredCount={videos.length}
+          filteredCount={visibleVideos.length}
           isLoading={isLoading}
         />
 
@@ -165,7 +172,7 @@ export function S3BrowserPage() {
           </div>
         )}
 
-        {isLoading && videos.length === 0 && (
+        {isLoading && visibleVideos.length === 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <AdaptiveVideoCardSkeleton
@@ -176,7 +183,7 @@ export function S3BrowserPage() {
           </div>
         )}
 
-        {!isLoading && videos.length === 0 && !error && totalCount === 0 && (
+        {!isLoading && visibleVideos.length === 0 && !error && totalCount === 0 && (
           <EmptyState
             icon={
               <svg
@@ -198,7 +205,7 @@ export function S3BrowserPage() {
           />
         )}
 
-        {!isLoading && videos.length === 0 && !error && totalCount > 0 && (
+        {!isLoading && visibleVideos.length === 0 && !error && totalCount > 0 && (
           <EmptyState
             icon={
               <svg
@@ -220,10 +227,10 @@ export function S3BrowserPage() {
           />
         )}
 
-        {videos.length > 0 && (
+        {visibleVideos.length > 0 && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {videos.map((video) => (
+              {visibleVideos.map((video) => (
                 <AdaptiveS3VideoCard
                   key={video.key}
                   videoKey={video.key}
@@ -232,8 +239,10 @@ export function S3BrowserPage() {
                   lastModified={video.lastModified}
                   upvotes={video.upvotes}
                   isUpvoted={isUpvoted(video.key)}
-                  isPending={isPending(video.key)}
+                  isPending={isUpvotePending(video.key)}
                   onToggleUpvote={() => toggleUpvote(video.key, video.upvotes)}
+                  isMarkedForDeletion={isMarked(video.key)}
+                  onToggleMarkedForDeletion={() => toggleMarked(video.key)}
                   forceAspect={displayMode}
                 />
               ))}
@@ -243,7 +252,7 @@ export function S3BrowserPage() {
             <div ref={sentinelRef} className="h-4" />
 
             {/* Loading indicator for infinite scroll */}
-            {isLoading && videos.length > 0 && (
+            {isLoading && visibleVideos.length > 0 && (
               <div className="mt-4 flex justify-center">
                 <div className="flex items-center gap-2 text-gray-400">
                   <svg
@@ -272,7 +281,7 @@ export function S3BrowserPage() {
             )}
 
             {/* End of list indicator */}
-            {!hasMore && videos.length > 0 && (
+            {!hasMore && visibleVideos.length > 0 && (
               <div className="mt-8 text-center text-gray-500 text-sm">
                 All {totalCount} videos loaded
               </div>

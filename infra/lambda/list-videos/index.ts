@@ -28,6 +28,13 @@ interface VideoItem {
   size: number;
   lastModified: string;
   upvotes: number;
+  hidden?: boolean;
+}
+
+interface VideoMetadata {
+  videoKey: string;
+  upvotes?: number;
+  hidden?: boolean;
 }
 
 interface ListVideosResponse {
@@ -64,7 +71,7 @@ function sortObjects(
   objects: _Object[],
   sortField: SortField,
   sortOrder: SortOrder,
-  upvotesMap?: Map<string, number>
+  metadataMap?: Map<string, VideoMetadata>
 ): _Object[] {
   return [...objects].sort((a, b) => {
     let comparison = 0;
@@ -83,15 +90,15 @@ function sortObjects(
         break;
       }
       case 'upvotes': {
-        const aUpvotes = upvotesMap?.get(a.Key || '') || 0;
-        const bUpvotes = upvotesMap?.get(b.Key || '') || 0;
+        const aUpvotes = metadataMap?.get(a.Key || '')?.upvotes || 0;
+        const bUpvotes = metadataMap?.get(b.Key || '')?.upvotes || 0;
         comparison = aUpvotes - bUpvotes;
 
-        // If upvotes are equal, sort by date (newest first)
+        // If upvotes are equal, sort by date (newest first as secondary sort)
+        // Apply sortOrder to primary comparison only, secondary is always newest-first
         if (comparison === 0) {
-          comparison = (a.LastModified?.getTime() || 0) - (b.LastModified?.getTime() || 0);
-          // Reverse for newest first as secondary sort
-          comparison = -comparison;
+          const dateComparison = (b.LastModified?.getTime() || 0) - (a.LastModified?.getTime() || 0);
+          return dateComparison;
         }
         break;
       }
@@ -111,11 +118,11 @@ function filterBySearch(objects: _Object[], search: string): _Object[] {
   });
 }
 
-// Batch fetch upvotes from DynamoDB
-async function fetchUpvotes(videoKeys: string[]): Promise<Map<string, number>> {
-  const upvotesMap = new Map<string, number>();
+// Batch fetch video metadata (upvotes and hidden status) from DynamoDB
+async function fetchVideoMetadata(videoKeys: string[]): Promise<Map<string, VideoMetadata>> {
+  const metadataMap = new Map<string, VideoMetadata>();
 
-  if (videoKeys.length === 0) return upvotesMap;
+  if (videoKeys.length === 0) return metadataMap;
 
   // DynamoDB BatchGetItem has a limit of 100 items per request
   const BATCH_SIZE = 100;
@@ -137,15 +144,19 @@ async function fetchUpvotes(videoKeys: string[]): Promise<Map<string, number>> {
 
       const items = result.Responses?.[UPVOTES_TABLE_NAME] || [];
       for (const item of items) {
-        upvotesMap.set(item.videoKey as string, item.upvotes as number);
+        metadataMap.set(item.videoKey as string, {
+          videoKey: item.videoKey as string,
+          upvotes: item.upvotes as number | undefined,
+          hidden: item.hidden as boolean | undefined,
+        });
       }
     } catch (error) {
-      console.error('Error fetching upvotes batch:', error);
-      // Continue with 0 upvotes for failed batch
+      console.error('Error fetching metadata batch:', error);
+      // Continue with defaults for failed batch
     }
   }
 
-  return upvotesMap;
+  return metadataMap;
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -179,15 +190,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Apply search filter
     videoObjects = filterBySearch(videoObjects, search);
 
-    // Get total count before pagination
+    // Fetch metadata for all filtered videos (upvotes and hidden status)
+    const allVideoKeys = videoObjects.map(obj => obj.Key!);
+    const metadataMap = await fetchVideoMetadata(allVideoKeys);
+
+    // Filter out hidden videos
+    videoObjects = videoObjects.filter(obj => {
+      const metadata = metadataMap.get(obj.Key!);
+      return !metadata?.hidden;
+    });
+
+    // Get total count after filtering hidden
     const totalCount = videoObjects.length;
 
-    // Fetch upvotes for all filtered videos
-    const allVideoKeys = videoObjects.map(obj => obj.Key!);
-    const upvotesMap = await fetchUpvotes(allVideoKeys);
-
-    // Apply sorting (pass upvotesMap for upvotes sort)
-    videoObjects = sortObjects(videoObjects, sortField, sortOrder, upvotesMap);
+    // Apply sorting (pass metadataMap for upvotes sort)
+    videoObjects = sortObjects(videoObjects, sortField, sortOrder, metadataMap);
 
     // Apply pagination
     const startIndex = (page - 1) * pageSize;
@@ -205,12 +222,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         { expiresIn: PRESIGNED_URL_EXPIRY }
       );
 
+      const metadata = metadataMap.get(object.Key!);
       videos.push({
         key: object.Key!,
         url: presignedUrl,
         size: object.Size || 0,
         lastModified: object.LastModified?.toISOString() || '',
-        upvotes: upvotesMap.get(object.Key!) || 0,
+        upvotes: metadata?.upvotes || 0,
       });
     }
 

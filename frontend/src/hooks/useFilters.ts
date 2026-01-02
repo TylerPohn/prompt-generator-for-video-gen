@@ -19,6 +19,11 @@ export function useFilters(cards: VideoCard[]) {
   // Filter cards based on active filters
   const filteredCards = useMemo(() => {
     return cards.filter(card => {
+      // Always hide marked-for-deletion cards
+      if (card.markedForDeletion) {
+        return false;
+      }
+
       // Filter by favorites
       if (filters.showFavoritesOnly && !card.isFavorite) {
         return false;
