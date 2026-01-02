@@ -65,10 +65,10 @@ export function S3VideoFilterControls({
         <select
           value={filters.sortField}
           onChange={(e) => onSortFieldChange(e.target.value as SortField)}
-          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
         >
           {SORT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
+            <option key={option.value} value={option.value} className="bg-gray-800 text-gray-100 py-2">
               {option.label}
             </option>
           ))}
