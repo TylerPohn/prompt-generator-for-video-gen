@@ -126,10 +126,13 @@ export function VideoCard({
               {card.isFavorite ? '⭐' : '☆'}
             </button>
 
-            <DeleteButton
-              onDelete={() => onDelete(card.id)}
-              itemName="video card"
-            />
+            {/* Delete Button - only when video gen is enabled */}
+            {ENABLE_VIDEO_GEN && (
+              <DeleteButton
+                onDelete={() => onDelete(card.id)}
+                itemName="video card"
+              />
+            )}
 
             {/* Mark for Deletion Button - only when video gen is enabled */}
             {ENABLE_VIDEO_GEN && (

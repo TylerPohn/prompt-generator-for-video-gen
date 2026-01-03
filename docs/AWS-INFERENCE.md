@@ -2,7 +2,7 @@
 
 **Last Updated**: 2025-12-29
 **Model**: HunyuanVideo-1.5 (Q4 quantization, ~7GB)
-**GPU Instance**: g5.48xlarge (4× NVIDIA A10G, 24GB VRAM each)
+**GPU Instance**: g5.16xlarge (1× NVIDIA A10G, 24GB VRAM)
 **Status**: ✅ Production Ready
 **Recent Fixes**:
 - ✅ CUDA memory issue resolved (CPU offload enabled)
@@ -43,7 +43,7 @@ Return presigned URL
 ### Components
 
 **Compute**:
-- **GPU Instance**: g5.48xlarge (4× NVIDIA A10G, 96GB total VRAM)
+- **GPU Instance**: g5.16xlarge (1× NVIDIA A10G, 24GB VRAM)
 - **Container**: Docker with CUDA 12.1, PyTorch 2.4.0, Diffusers 0.36.0
 - **Model**: HunyuanVideo-1.5 with GGUF Q8 quantization (13.97GB)
 
@@ -794,7 +794,7 @@ df -h
 **Status**: ✅ RESOLVED
 
 **Solution**:
-- Upgraded to g5.48xlarge (96GB total VRAM)
+- Using g5.16xlarge (24GB VRAM)
 - Using Q4 quantization (~7GB) instead of Q8 (~14GB)
 - Enabled CPU offload to keep components on CPU when not in use
 
@@ -958,7 +958,7 @@ infra/
 
 **Last Verified**: 2025-12-29
 **Status**: ✅ Production Ready
-**GPU**: g5.48xlarge running HunyuanVideo Q4 with async generation
+**GPU**: g5.16xlarge running HunyuanVideo Q4 with async generation
 **Recent Resolutions**:
 - CUDA memory issue (CPU offload enabled)
 - Lambda timeout issue (async + polling pattern)
