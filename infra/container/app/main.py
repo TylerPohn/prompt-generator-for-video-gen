@@ -8,6 +8,7 @@ import traceback
 import secrets
 import random
 import sys
+import json
 from contextlib import asynccontextmanager
 from typing import Optional
 from datetime import datetime
@@ -24,14 +25,32 @@ from app.utils import upload_to_s3, cleanup_temp_file
 
 # Auto-gen loop configuration
 AUTO_GEN_ENABLED = os.environ.get('AUTO_GEN_ENABLED', 'false').lower() == 'true'
-AUTO_GEN_PROMPT = os.environ.get('AUTO_GEN_PROMPT', '')
+AUTO_GEN_PROMPTS_RAW = os.environ.get('AUTO_GEN_PROMPTS', '')  # JSON array format
+AUTO_GEN_PROMPT_LEGACY = os.environ.get('AUTO_GEN_PROMPT', '')  # Legacy single prompt
 AUTO_GEN_DURATION = int(os.environ.get('AUTO_GEN_DURATION', '4'))
 AUTO_GEN_BUCKET = os.environ.get('AUTO_GEN_BUCKET', '')
 
+# Parse prompts: prefer AUTO_GEN_PROMPTS (JSON array), fall back to AUTO_GEN_PROMPT (single)
+AUTO_GEN_PROMPTS: list[str] = []
+if AUTO_GEN_PROMPTS_RAW:
+    try:
+        parsed = json.loads(AUTO_GEN_PROMPTS_RAW)
+        if not isinstance(parsed, list):
+            raise ValueError("AUTO_GEN_PROMPTS must be a JSON array")
+        if not all(isinstance(p, str) for p in parsed):
+            raise ValueError("AUTO_GEN_PROMPTS must contain only strings")
+        if len(parsed) == 0:
+            raise ValueError("AUTO_GEN_PROMPTS cannot be an empty array")
+        AUTO_GEN_PROMPTS = parsed
+    except json.JSONDecodeError as e:
+        raise ValueError(f"AUTO_GEN_PROMPTS is not valid JSON: {e}")
+elif AUTO_GEN_PROMPT_LEGACY:
+    AUTO_GEN_PROMPTS = [AUTO_GEN_PROMPT_LEGACY]
+
 # Validate auto-gen config at import time
 if AUTO_GEN_ENABLED:
-    if not AUTO_GEN_PROMPT:
-        raise ValueError("AUTO_GEN_PROMPT is required when AUTO_GEN_ENABLED=true")
+    if not AUTO_GEN_PROMPTS:
+        raise ValueError("AUTO_GEN_PROMPTS or AUTO_GEN_PROMPT is required when AUTO_GEN_ENABLED=true")
     if not AUTO_GEN_BUCKET:
         raise ValueError("AUTO_GEN_BUCKET is required when AUTO_GEN_ENABLED=true")
     if AUTO_GEN_DURATION < 1 or AUTO_GEN_DURATION > 10:
@@ -362,7 +381,9 @@ async def auto_gen_loop():
     Runs one job at a time, restarts container on CUDA OOM.
     """
     logger.info("Starting auto-gen loop...")
-    logger.info(f"Prompt: {AUTO_GEN_PROMPT}")
+    logger.info(f"Prompts ({len(AUTO_GEN_PROMPTS)} total):")
+    for i, prompt in enumerate(AUTO_GEN_PROMPTS):
+        logger.info(f"  [{i}]: {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
     logger.info(f"Duration: {AUTO_GEN_DURATION}s")
     logger.info(f"Bucket: {AUTO_GEN_BUCKET}")
 
@@ -376,6 +397,11 @@ async def auto_gen_loop():
 
         logger.info(f"[AUTO-GEN] Starting job #{job_count}: {job_id}")
 
+        # Select prompt using modulo cycling (job_count is 1-indexed)
+        prompt_index = (job_count - 1) % len(AUTO_GEN_PROMPTS)
+        current_prompt = AUTO_GEN_PROMPTS[prompt_index]
+        logger.info(f"[AUTO-GEN] [{job_id}] Using prompt [{prompt_index}]: {current_prompt[:80]}{'...' if len(current_prompt) > 80 else ''}")
+
         start_time = datetime.utcnow()
         temp_video_path = None
 
@@ -387,7 +413,7 @@ async def auto_gen_loop():
 
             # Generate video (using smaller resolution for A10G compatibility)
             generate_kwargs = {
-                "prompt": AUTO_GEN_PROMPT,
+                "prompt": current_prompt,
                 "num_inference_steps": effective_steps,
                 "duration_seconds": AUTO_GEN_DURATION,
                 "fps": 15,
